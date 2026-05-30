@@ -16,8 +16,13 @@ RESULT_ITEM_HTML = f"""
       </a>
     </h1>
     <p class="item-text information">
-      Contabilidade | Iniciante | Publicado:
+      Vídeo - Edição e Produção | Intermediário | Publicado:
       <b class="datetime" cp-datetime="1780142145000">7 horas atrás</b>
+      | Tempo restante:
+      <b class="datetime-restante" cp-datetime="1782732304000">
+        29 dias e 15 horas
+      </b>
+      | Propostas: <b>10</b> | Interessados: <b>13</b>
     </p>
   </hgroup>
   <div class="item-text description formatted-text" data-content="">
@@ -52,6 +57,16 @@ def test_parse_result_item_html_uses_structured_project_fields() -> None:
     )
     assert item.project_href == PROJECT_HREF
     assert item.posted_at == "7 horas atrás"
+
+
+def test_parse_result_item_html_extracts_information_fields() -> None:
+    item = parse_result_item_html(RESULT_ITEM_HTML)
+
+    assert item is not None
+    assert item.level == "Intermediário"
+    assert item.remaining_time == "29 dias e 15 horas"
+    assert item.proposals == 10
+    assert item.interested == 13
 
 
 def test_parse_result_item_html_captures_expanded_description_without_controls() -> (

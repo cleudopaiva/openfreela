@@ -12,7 +12,9 @@ class ParsedProjectItem:
     """Project fields parsed from a 99freelas result-item HTML block.
 
     Example:
-        item = ParsedProjectItem("Title", "Desc", None, (), None, None, "raw")
+        item = ParsedProjectItem(
+            "Title", "Desc", None, (), None, None, None, None, None, None, "raw"
+        )
     """
 
     title: str
@@ -21,6 +23,10 @@ class ParsedProjectItem:
     skills: tuple[str, ...]
     project_href: str | None
     posted_at: str | None
+    remaining_time: str | None
+    proposals: int | None
+    interested: int | None
+    level: str | None
     raw_text: str
 
 
@@ -37,7 +43,9 @@ class TagState:
     description: bool = False
     skipped_description: bool = False
     skill: bool = False
+    information: bool = False
     posted_at: bool = False
+    remaining_time: bool = False
 
 
 @dataclass
@@ -51,7 +59,9 @@ class ResultItemHtmlParser(HTMLParser):
     stack: list[TagState] = field(default_factory=list)
     title_parts: list[str] = field(default_factory=list)
     description_parts: list[str] = field(default_factory=list)
+    information_parts: list[str] = field(default_factory=list)
     posted_at_parts: list[str] = field(default_factory=list)
+    remaining_time_parts: list[str] = field(default_factory=list)
     visible_parts: list[str] = field(default_factory=list)
     skill_values: list[str] = field(default_factory=list)
     current_skill_parts: list[str] | None = None
@@ -60,7 +70,9 @@ class ResultItemHtmlParser(HTMLParser):
     title_link_depth: int = 0
     description_depth: int = 0
     skipped_description_depth: int = 0
+    information_depth: int = 0
     posted_at_depth: int = 0
+    remaining_time_depth: int = 0
 
     def __post_init__(self) -> None:
         """Initialize the base HTML parser state."""
@@ -92,15 +104,20 @@ class ResultItemHtmlParser(HTMLParser):
             self.title_parts.append(data)
         if self.description_depth and not self.skipped_description_depth:
             self.description_parts.append(data)
+        if self.information_depth:
+            self.information_parts.append(data)
         if self.current_skill_parts is not None:
             self.current_skill_parts.append(data)
         if self.posted_at_depth:
             self.posted_at_parts.append(data)
+        if self.remaining_time_depth:
+            self.remaining_time_parts.append(data)
 
     def project_item(self) -> ParsedProjectItem | None:
         """Return parsed project fields when the HTML contains project data."""
         title = clean_html_text(" ".join(self.title_parts))
         description = clean_html_text(" ".join(self.description_parts))
+        information = clean_html_text(" ".join(self.information_parts))
         raw_text = clean_html_text(" ".join(self.visible_parts))
         if not title and not description and self.project_href is None:
             return None
@@ -111,6 +128,10 @@ class ResultItemHtmlParser(HTMLParser):
             tuple(dict.fromkeys(self.skill_values)),
             self.project_href,
             clean_optional_text(" ".join(self.posted_at_parts)),
+            clean_optional_text(" ".join(self.remaining_time_parts)),
+            labelled_int(information, "Propostas"),
+            labelled_int(information, "Interessados"),
+            information_level(information),
             raw_text,
         )
 
@@ -121,7 +142,9 @@ class ResultItemHtmlParser(HTMLParser):
         self.track_title(tag, attrs, classes, state)
         self.track_description(tag, classes, state)
         self.track_skill(tag, classes, state)
+        self.track_information(tag, classes, state)
         self.track_posted_at(tag, classes, state)
+        self.track_remaining_time(tag, classes, state)
         return state
 
     def end_state(self, state: TagState) -> None:
@@ -132,7 +155,9 @@ class ResultItemHtmlParser(HTMLParser):
         self.title_link_depth -= int(state.title_link)
         self.description_depth -= int(state.description)
         self.skipped_description_depth -= int(state.skipped_description)
+        self.information_depth -= int(state.information)
         self.posted_at_depth -= int(state.posted_at)
+        self.remaining_time_depth -= int(state.remaining_time)
 
     def track_title(
         self,
@@ -167,11 +192,25 @@ class ResultItemHtmlParser(HTMLParser):
         state.skill = True
         self.current_skill_parts = []
 
+    def track_information(self, tag: str, classes: set[str], state: TagState) -> None:
+        """Track the project metadata information paragraph."""
+        if tag == "p" and "information" in classes:
+            state.information = True
+            self.information_depth += 1
+
     def track_posted_at(self, tag: str, classes: set[str], state: TagState) -> None:
         """Track the published-at timestamp element."""
         if tag == "b" and "datetime" in classes:
             state.posted_at = True
             self.posted_at_depth += 1
+
+    def track_remaining_time(
+        self, tag: str, classes: set[str], state: TagState
+    ) -> None:
+        """Track the project remaining-time timestamp element."""
+        if tag == "b" and "datetime-restante" in classes:
+            state.remaining_time = True
+            self.remaining_time_depth += 1
 
     def add_description_separator(self) -> None:
         """Preserve paragraph boundaries inside description text."""
@@ -249,3 +288,28 @@ def first_matching_text(text: str, pattern: str) -> str | None:
         if re.search(pattern, part, flags=re.IGNORECASE):
             return clean_html_text(part)
     return None
+
+
+def labelled_int(text: str, label: str) -> int | None:
+    """Return an integer that appears after a labelled metadata field.
+
+    Example:
+        proposals = labelled_int("Propostas: 10", "Propostas")
+    """
+    match = re.search(rf"{re.escape(label)}:\s*(\d+)", text, re.IGNORECASE)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def information_level(text: str) -> str | None:
+    """Return the project level from a 99freelas information paragraph.
+
+    Example:
+        level = information_level("Web | Intermediário | Publicado: hoje")
+    """
+    parts = [clean_html_text(part) for part in text.split("|")]
+    candidates = [part for part in parts if part and "Publicado:" not in part]
+    if len(candidates) < 2:
+        return None
+    return candidates[1]

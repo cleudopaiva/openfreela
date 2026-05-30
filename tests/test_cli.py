@@ -31,7 +31,9 @@ def test_main_runs_scrape_command_and_saves_json(
 ) -> None:
     output_path = tmp_path / "projects.json"
     session_path = tmp_path / "session.json"
-    project = FreelanceProject("Title", "Desc", None, ("Python",), "url", None, "raw")
+    project = FreelanceProject(
+        "Title", "Desc", None, ("Python",), "url", None, None, None, None, None, "raw"
+    )
 
     def scrape_projects(path: Path, *, headless: bool = True) -> list[FreelanceProject]:
         assert path == session_path

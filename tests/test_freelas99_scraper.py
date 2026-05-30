@@ -188,15 +188,34 @@ def test_parse_project_card_text_extracts_visible_fields() -> None:
     assert project.budget == "R$ 1.000 - R$ 3.000"
     assert project.skills == ("Python", "FastAPI", "PostgreSQL")
     assert project.posted_at == "Publicado há 2 horas"
+    assert project.remaining_time is None
+    assert project.proposals is None
+    assert project.interested is None
+    assert project.level is None
     assert "Preciso de uma API" in project.description
 
 
 def test_freelance_project_to_dict_serializes_skills() -> None:
     project = FreelanceProject(
-        "Title", "Desc", "R$ 1", ("Python",), "url", "hoje", "raw"
+        "Title",
+        "Desc",
+        "R$ 1",
+        ("Python",),
+        "url",
+        "hoje",
+        "2 dias",
+        10,
+        13,
+        "Intermediário",
+        "raw",
     )
 
-    assert project.to_dict()["skills"] == ["Python"]
+    payload = project.to_dict()
+    assert payload["skills"] == ["Python"]
+    assert payload["remaining_time"] == "2 dias"
+    assert payload["proposals"] == 10
+    assert payload["interested"] == 13
+    assert payload["level"] == "Intermediário"
 
 
 def test_absolute_project_url_keeps_99freelas_base() -> None:
@@ -234,7 +253,11 @@ def test_scrape_first_projects_page_stops_browser(
     session_path = tmp_path / "session.json"
     session_path.write_text("{}")
     cdp_browser = FakeCdpBrowser()
-    expected = [FreelanceProject("Title", "Desc", None, (), "url", None, "raw")]
+    expected = [
+        FreelanceProject(
+            "Title", "Desc", None, (), "url", None, None, None, None, None, "raw"
+        )
+    ]
     calls: list[tuple[str, Path]] = []
 
     def launch_browser(*, headless: bool) -> FakeCdpBrowser:
@@ -326,13 +349,27 @@ def test_project_from_link_falls_back_to_link_text() -> None:
 
 def test_project_from_parsed_item_normalizes_project_url() -> None:
     item = ParsedProjectItem(
-        "Title", "Desc", None, ("Python",), "/project/x", "hoje", "raw"
+        "Title",
+        "Desc",
+        None,
+        ("Python",),
+        "/project/x",
+        "hoje",
+        "2 dias",
+        10,
+        13,
+        "Intermediário",
+        "raw",
     )
 
     project = project_from_parsed_item(item)
 
     assert project.project_url == "https://www.99freelas.com.br/project/x"
     assert project.skills == ("Python",)
+    assert project.remaining_time == "2 dias"
+    assert project.proposals == 10
+    assert project.interested == 13
+    assert project.level == "Intermediário"
 
 
 def test_nearest_project_text_prefers_long_ancestor_text() -> None:

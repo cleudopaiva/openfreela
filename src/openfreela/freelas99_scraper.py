@@ -38,7 +38,9 @@ class FreelanceProject:
     """A project extracted from the 99freelas project listing.
 
     Example:
-        project = FreelanceProject("API", "Build API", None, (), None, None, "API")
+        project = FreelanceProject(
+            "API", "Build API", None, (), None, None, None, None, None, None, "API"
+        )
     """
 
     title: str
@@ -47,9 +49,13 @@ class FreelanceProject:
     skills: tuple[str, ...]
     project_url: str | None
     posted_at: str | None
+    remaining_time: str | None
+    proposals: int | None
+    interested: int | None
+    level: str | None
     raw_text: str
 
-    def to_dict(self) -> dict[str, str | list[str] | None]:
+    def to_dict(self) -> dict[str, str | int | list[str] | None]:
         """Return a JSON-serializable project dictionary.
 
         Example:
@@ -62,6 +68,10 @@ class FreelanceProject:
             "skills": list(self.skills),
             "project_url": self.project_url,
             "posted_at": self.posted_at,
+            "remaining_time": self.remaining_time,
+            "proposals": self.proposals,
+            "interested": self.interested,
+            "level": self.level,
             "raw_text": self.raw_text,
         }
 
@@ -194,6 +204,10 @@ def project_from_link(link: Locator) -> FreelanceProject:
         project.skills,
         project_url,
         project.posted_at,
+        project.remaining_time,
+        project.proposals,
+        project.interested,
+        project.level,
         raw_text,
     )
 
@@ -223,6 +237,10 @@ def project_from_parsed_item(item: ParsedProjectItem) -> FreelanceProject:
         item.skills,
         absolute_project_url(item.project_href),
         item.posted_at,
+        item.remaining_time,
+        item.proposals,
+        item.interested,
+        item.level,
         item.raw_text,
     )
 
@@ -302,7 +320,17 @@ def parse_project_card_text(raw_text: str, project_url: str | None) -> Freelance
     skills = extract_skills(lines)
     description = build_description(lines, title, budget, posted_at, skills)
     return FreelanceProject(
-        title, description, budget, skills, project_url, posted_at, clean_text(raw_text)
+        title,
+        description,
+        budget,
+        skills,
+        project_url,
+        posted_at,
+        None,
+        None,
+        None,
+        None,
+        clean_text(raw_text),
     )
 
 
