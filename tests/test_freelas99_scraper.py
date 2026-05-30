@@ -7,6 +7,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from openfreela import freelas99_scraper
+from openfreela.freelas99_html import ParsedProjectItem
 from openfreela.freelas99_scraper import (
     FreelanceProject,
     SessionExpiredError,
@@ -23,6 +24,7 @@ from openfreela.freelas99_scraper import (
     nearest_project_text,
     parse_project_card_text,
     project_from_link,
+    project_from_parsed_item,
     scrape_first_projects_page,
     split_skill_values,
     wait_for_projects_or_login,
@@ -320,6 +322,17 @@ def test_project_from_link_falls_back_to_link_text() -> None:
     project = project_from_link(cast("Locator", locator))
 
     assert project.title == "Fallback title"
+
+
+def test_project_from_parsed_item_normalizes_project_url() -> None:
+    item = ParsedProjectItem(
+        "Title", "Desc", None, ("Python",), "/project/x", "hoje", "raw"
+    )
+
+    project = project_from_parsed_item(item)
+
+    assert project.project_url == "https://www.99freelas.com.br/project/x"
+    assert project.skills == ("Python",)
 
 
 def test_nearest_project_text_prefers_long_ancestor_text() -> None:

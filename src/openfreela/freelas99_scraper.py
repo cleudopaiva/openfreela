@@ -10,9 +10,19 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from openfreela.cdp_browser import launch_cdp_browser
+from openfreela.freelas99_html import ParsedProjectItem, parse_result_item_html
 
 PROJECTS_URL = "https://www.99freelas.com.br/projects"
-PROJECT_LINK_SELECTOR = "a[href*='/project'], a[href*='/projeto']"
+PROJECT_LINK_SELECTOR = (
+    "li.result-item h1.title a[href*='/project/'], "
+    "li.result-item h1.title a[href*='/projeto/'], "
+    "h1.title a[href*='/project/'], "
+    "h1.title a[href*='/projeto/']"
+)
+RESULT_ITEM_SELECTOR = (
+    "xpath=ancestor::li[contains(concat(' ', normalize-space(@class), ' '), "
+    "' result-item ')][1]"
+)
 MAX_PROJECT_LINKS = 80
 
 if TYPE_CHECKING:
@@ -167,6 +177,9 @@ def project_from_link(link: Locator) -> FreelanceProject:
     Example:
         project = project_from_link(page.locator("a").first)
     """
+    structured_project = project_from_result_item(link.locator(RESULT_ITEM_SELECTOR))
+    if structured_project is not None:
+        return structured_project
     href = link.get_attribute("href")
     project_url = absolute_project_url(href)
     raw_text = nearest_project_text(link)
@@ -183,6 +196,47 @@ def project_from_link(link: Locator) -> FreelanceProject:
         project.posted_at,
         raw_text,
     )
+
+
+def project_from_result_item(card: Locator) -> FreelanceProject | None:
+    """Build one project from a structured 99freelas result-item node.
+
+    Example:
+        project = project_from_result_item(page.locator("li.result-item").first)
+    """
+    item = parse_result_item_html(locator_outer_html(card))
+    if item is None:
+        return None
+    return project_from_parsed_item(item)
+
+
+def project_from_parsed_item(item: ParsedProjectItem) -> FreelanceProject:
+    """Convert parsed HTML fields into the public project model.
+
+    Example:
+        project = project_from_parsed_item(item)
+    """
+    return FreelanceProject(
+        item.title,
+        item.description,
+        item.budget,
+        item.skills,
+        absolute_project_url(item.project_href),
+        item.posted_at,
+        item.raw_text,
+    )
+
+
+def locator_outer_html(locator: Locator) -> str:
+    """Read a locator's outerHTML while tolerating missing structured nodes.
+
+    Example:
+        html = locator_outer_html(page.locator("li.result-item").first)
+    """
+    try:
+        return str(locator.evaluate("element => element.outerHTML", timeout=1_000))
+    except AttributeError, PlaywrightError:
+        return ""
 
 
 def absolute_project_url(href: str | None) -> str | None:
