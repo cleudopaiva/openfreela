@@ -272,7 +272,8 @@ def ollama_client_from_env() -> OllamaClient:
     """
     base_url = os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
     model = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
-    return OllamaClient(base_url, model)
+    timeout = env_int("OPENFREELA_OLLAMA_TIMEOUT", 300)
+    return OllamaClient(base_url, model, timeout)
 
 
 def telegram_from_env() -> TelegramNotifier:
@@ -309,6 +310,18 @@ def env_min_profile_match() -> int:
     value = os.environ.get("OPENFREELA_MIN_PROFILE_MATCH")
     if value is None:
         return DEFAULT_MIN_PROFILE_MATCH
+    return int(value)
+
+
+def env_int(name: str, default: int) -> int:
+    """Return an integer environment variable or a default value.
+
+    Example:
+        timeout = env_int("OPENFREELA_OLLAMA_TIMEOUT", 300)
+    """
+    value = os.environ.get(name)
+    if value is None:
+        return default
     return int(value)
 
 

@@ -147,6 +147,7 @@ Optional environment variables:
 ```bash
 export OLLAMA_BASE_URL="http://localhost:11434"
 export OLLAMA_MODEL="qwen3.5:latest"
+export OPENFREELA_OLLAMA_TIMEOUT="300"
 export OPENFREELA_MIN_PROFILE_MATCH="75"
 ```
 
@@ -170,6 +171,8 @@ It writes:
 data/99freelas-project-evaluations.json
 data/notified-projects.json
 ```
+
+Successful evaluations are written incrementally after each project, so progress is kept if Ollama times out or one project fails to parse. Re-running the command skips project URLs already present in `data/99freelas-project-evaluations.json`.
 
 Telegram notifications are sent only when both conditions are true:
 

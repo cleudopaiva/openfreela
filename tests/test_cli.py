@@ -147,6 +147,16 @@ def test_required_env_rejects_missing_value(monkeypatch: pytest.MonkeyPatch) -> 
         cli.required_env("TELEGRAM_BOT_TOKEN")
 
 
+def test_ollama_client_from_env_uses_timeout_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENFREELA_OLLAMA_TIMEOUT", "42")
+
+    client = cli.ollama_client_from_env()
+
+    assert client.timeout_seconds == 42
+
+
 def test_build_parser_requires_known_command() -> None:
     parser = cli.build_parser()
     argv: Sequence[str] = ["unknown"]

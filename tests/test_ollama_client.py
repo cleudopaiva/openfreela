@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from openfreela.ollama_client import OllamaClient, response_message_content
+from openfreela import ollama_client
+from openfreela.ollama_client import OllamaClient, post_json, response_message_content
 
 
 def test_ollama_client_builds_chat_url_and_payload() -> None:
@@ -21,3 +22,15 @@ def test_response_message_content_extracts_content() -> None:
 def test_response_message_content_rejects_invalid_shape() -> None:
     with pytest.raises(ValueError, match="expected object"):
         response_message_content({"message": "bad"})
+
+
+def test_post_json_converts_timeout_to_connection_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_with_timeout(request: object, *, timeout: int) -> object:
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(ollama_client, "urlopen", fail_with_timeout)
+
+    with pytest.raises(ConnectionError, match="timed out after 12s"):
+        post_json("http://localhost:11434/api/chat", {}, 12)

@@ -109,35 +109,9 @@ def evaluate_project_file(
     Example:
         evaluations = evaluate_project_file(config, judge, notifier)
     """
-    projects = load_project_objects(config.projects_path)
-    cv = read_required_text(config.cv_path)
-    template = read_required_text(config.prompt_path)
-    notified_urls = load_notified_urls(config.notified_path)
-    evaluations = evaluate_projects(projects, cv, template, judge)
-    save_evaluations(config.output_path, evaluations)
-    notify_matching_projects(
-        evaluations, config.min_profile_match, notified_urls, notifier
-    )
-    save_notified_urls(config.notified_path, notified_urls)
-    return evaluations
+    from openfreela.project_evaluation_runner import run_project_evaluation_file
 
-
-def evaluate_projects(
-    projects: list[dict[str, object]],
-    cv: str,
-    prompt_template: str,
-    judge: ProjectJudge,
-) -> list[ProjectEvaluation]:
-    """Evaluate all project dictionaries with the AI judge.
-
-    Example:
-        evaluations = evaluate_projects(projects, cv, template, judge)
-    """
-    evaluations: list[ProjectEvaluation] = []
-    for project in projects:
-        prompt = render_prompt(prompt_template, cv, project)
-        evaluations.append(parse_project_evaluation(judge.chat_json(prompt), project))
-    return evaluations
+    return run_project_evaluation_file(config, judge, notifier)
 
 
 def render_prompt(template: str, cv: str, project: dict[str, object]) -> str:
@@ -191,24 +165,6 @@ def load_json_object(content: str) -> object:
         if match is None:
             raise
         return json.loads(match.group(0))
-
-
-def notify_matching_projects(
-    evaluations: list[ProjectEvaluation],
-    min_profile_match: int,
-    notified_urls: set[str],
-    notifier: ProjectNotifier,
-) -> None:
-    """Notify Telegram for new apply recommendations above the score threshold.
-
-    Example:
-        notify_matching_projects(evaluations, 75, set(), notifier)
-    """
-    for evaluation in evaluations:
-        if not should_notify(evaluation, min_profile_match, notified_urls):
-            continue
-        notifier.send_message(notification_message(evaluation))
-        notified_urls.add(evaluation.project_url)
 
 
 def should_notify(
@@ -286,6 +242,47 @@ def save_evaluations(path: Path, evaluations: list[ProjectEvaluation]) -> None:
     payload = [evaluation.to_dict() for evaluation in evaluations]
     path.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def load_evaluations(path: Path) -> list[ProjectEvaluation]:
+    """Load existing successful evaluations from JSON if present.
+
+    Example:
+        evaluations = load_evaluations(Path("data/evals.json"))
+    """
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError(f"Invalid evaluations file {path}; expected JSON list.")
+    return [
+        parse_saved_evaluation(object_json(item, f"evaluation at index {index}"))
+        for index, item in enumerate(data)
+    ]
+
+
+def parse_saved_evaluation(payload: dict[str, object]) -> ProjectEvaluation:
+    """Parse one saved evaluation object.
+
+    Example:
+        evaluation = parse_saved_evaluation(payload)
+    """
+    return ProjectEvaluation(
+        project_url=required_project_string(payload, "project_url"),
+        title=required_project_string(payload, "title"),
+        profile_match_score=required_score(payload, "profile_match_score"),
+        execution_confidence_score=required_score(
+            payload, "execution_confidence_score"
+        ),
+        recommendation=required_recommendation(payload),
+        summary=optional_string(payload, "summary"),
+        why_apply=optional_string(payload, "why_apply"),
+        cv_matches=string_tuple(payload, "cv_matches"),
+        adjacent_skills=string_tuple(payload, "adjacent_skills"),
+        missing_skills=string_tuple(payload, "missing_skills"),
+        risks=string_tuple(payload, "risks"),
+        proposal_angle=optional_string(payload, "proposal_angle"),
     )
 
 

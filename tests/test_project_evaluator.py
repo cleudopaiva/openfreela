@@ -37,6 +37,48 @@ class FakeJudge:
         return self.response
 
 
+class SequentialJudge:
+    """Fake AI judge that returns responses in order.
+
+    Example:
+        judge = SequentialJudge(['{"recommendation": "apply"}'])
+    """
+
+    def __init__(self, responses: list[str | BaseException]) -> None:
+        self.responses = responses
+        self.prompts: list[str] = []
+
+    def chat_json(self, prompt: str) -> str:
+        """Record the prompt and return or raise the next fake response."""
+        self.prompts.append(prompt)
+        response = self.responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+
+class IncrementalSaveJudge:
+    """Fake AI judge that verifies the first result is saved before the second call.
+
+    Example:
+        judge = IncrementalSaveJudge(path, response)
+    """
+
+    def __init__(self, output_path: Path, response: str) -> None:
+        self.output_path = output_path
+        self.response = response
+        self.calls = 0
+        self.saw_incremental_save = False
+
+    def chat_json(self, prompt: str) -> str:
+        """Return fake responses and inspect saved output on the second call."""
+        self.calls += 1
+        if self.calls == 2:
+            saved = json.loads(self.output_path.read_text())
+            self.saw_incremental_save = saved[0]["project_url"] == "url-1"
+        return self.response
+
+
 class FakeNotifier:
     """Fake notifier that records messages.
 
@@ -52,13 +94,15 @@ class FakeNotifier:
         self.messages.append(text)
 
 
-def project_payload() -> dict[str, object]:
+def project_payload(
+    title: str = "API Project", project_url: str = "https://example.com/project"
+) -> dict[str, object]:
     """Return a minimal scraped project payload for tests.
 
     Example:
         project = project_payload()
     """
-    return {"title": "API Project", "project_url": "https://example.com/project"}
+    return {"title": title, "project_url": project_url}
 
 
 def ai_payload(
@@ -166,7 +210,50 @@ def test_evaluate_project_file_skips_duplicate_notification(tmp_path: Path) -> N
     assert notifier.messages == []
 
 
-def write_evaluation_inputs(tmp_path: Path) -> EvaluationRunConfig:
+def test_evaluate_project_file_saves_each_success_incrementally(
+    tmp_path: Path,
+) -> None:
+    projects = [project_payload("One", "url-1"), project_payload("Two", "url-2")]
+    paths = write_evaluation_inputs(tmp_path, projects)
+    judge = IncrementalSaveJudge(paths.output_path, json.dumps(ai_payload()))
+
+    evaluations = evaluate_project_file(paths, judge, FakeNotifier())
+
+    assert len(evaluations) == 2
+    assert judge.saw_incremental_save
+
+
+def test_evaluate_project_file_skips_existing_evaluation(tmp_path: Path) -> None:
+    paths = write_evaluation_inputs(tmp_path)
+    existing = parse_project_evaluation(json.dumps(ai_payload()), project_payload())
+    paths.output_path.write_text(json.dumps([existing.to_dict()]))
+    judge = FakeJudge(json.dumps(ai_payload()))
+
+    evaluations = evaluate_project_file(paths, judge, FakeNotifier())
+
+    assert evaluations == [existing]
+    assert judge.prompts == []
+
+
+def test_evaluate_project_file_logs_failure_without_saving_fake_result(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    projects = [project_payload("Bad", "bad-url"), project_payload("Good", "good-url")]
+    paths = write_evaluation_inputs(tmp_path, projects)
+    judge = SequentialJudge([RuntimeError("model failed"), json.dumps(ai_payload())])
+
+    evaluations = evaluate_project_file(paths, judge, FakeNotifier())
+
+    saved = json.loads(paths.output_path.read_text())
+    assert len(evaluations) == 1
+    assert saved[0]["project_url"] == "good-url"
+    assert "bad-url" not in paths.output_path.read_text()
+    assert "Failed 1/2: Bad: model failed" in capsys.readouterr().out
+
+
+def write_evaluation_inputs(
+    tmp_path: Path, projects: list[dict[str, object]] | None = None
+) -> EvaluationRunConfig:
     """Write test input files and return an evaluator config.
 
     Example:
@@ -177,7 +264,7 @@ def write_evaluation_inputs(tmp_path: Path) -> EvaluationRunConfig:
     prompt_path = tmp_path / "prompt.md"
     output_path = tmp_path / "evaluations.json"
     notified_path = tmp_path / "notified.json"
-    projects_path.write_text(json.dumps([project_payload()]))
+    projects_path.write_text(json.dumps(projects or [project_payload()]))
     cv_path.write_text("My CV")
     prompt_path.write_text("CV {{cv}} Project {{project}}")
     return EvaluationRunConfig(

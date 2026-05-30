@@ -67,6 +67,11 @@ def post_json(
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             decoded = json.loads(response.read().decode("utf-8"))
+    except TimeoutError as error:
+        message = (
+            f"Ollama timed out after {timeout_seconds}s while evaluating a project."
+        )
+        raise ConnectionError(message) from error
     except URLError as error:
         message = f"Could not reach Ollama at {url}; expected a running Ollama server."
         raise ConnectionError(message) from error
