@@ -1,0 +1,336 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+from urllib.parse import urljoin
+
+from playwright.sync_api import Browser, BrowserContext, Locator, sync_playwright
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+from openfreela.cdp_browser import launch_cdp_browser
+
+PROJECTS_URL = "https://www.99freelas.com.br/projects"
+PROJECT_LINK_SELECTOR = "a[href*='/project'], a[href*='/projeto']"
+MAX_PROJECT_LINKS = 80
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+class SessionExpiredError(RuntimeError):
+    """Raised when the saved 99freelas session no longer opens projects."""
+
+
+@dataclass(frozen=True)
+class FreelanceProject:
+    """A project extracted from the 99freelas project listing.
+
+    Example:
+        project = FreelanceProject("API", "Build API", None, (), None, None, "API")
+    """
+
+    title: str
+    description: str
+    budget: str | None
+    skills: tuple[str, ...]
+    project_url: str | None
+    posted_at: str | None
+    raw_text: str
+
+    def to_dict(self) -> dict[str, str | list[str] | None]:
+        """Return a JSON-serializable project dictionary.
+
+        Example:
+            payload = project.to_dict()
+        """
+        return {
+            "title": self.title,
+            "description": self.description,
+            "budget": self.budget,
+            "skills": list(self.skills),
+            "project_url": self.project_url,
+            "posted_at": self.posted_at,
+            "raw_text": self.raw_text,
+        }
+
+
+def scrape_first_projects_page(
+    session_path: Path,
+    *,
+    headless: bool = True,
+) -> list[FreelanceProject]:
+    """Scrape the first authenticated 99freelas projects page.
+
+    Example:
+        projects = scrape_first_projects_page(Path(".auth/99freelas.json"))
+    """
+    ensure_session_exists(session_path)
+    cdp_browser = launch_cdp_browser(headless=headless)
+    try:
+        return scrape_connected_browser(cdp_browser.get_endpoint_url(), session_path)
+    finally:
+        cdp_browser.driver.stop()
+
+
+def scrape_connected_browser(
+    endpoint_url: str, session_path: Path
+) -> list[FreelanceProject]:
+    """Attach Playwright over CDP and scrape the projects page.
+
+    Example:
+        projects = scrape_connected_browser("http://127.0.0.1:9222", Path("s.json"))
+    """
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(endpoint_url)
+        context = browser_context_with_session(browser, session_path)
+        page = context.new_page()
+        page.goto(PROJECTS_URL, wait_until="domcontentloaded")
+        wait_for_projects_or_login(page.url, page.locator(PROJECT_LINK_SELECTOR))
+        projects = collect_projects(page.locator(PROJECT_LINK_SELECTOR))
+        browser.close()
+        return projects
+
+
+def browser_context_with_session(
+    browser: Browser,
+    session_path: Path,
+) -> BrowserContext:
+    """Create a Playwright context using saved storage state.
+
+    Example:
+        context = browser_context_with_session(browser, Path("s.json"))
+    """
+    try:
+        return browser.new_context(storage_state=str(session_path))
+    except PlaywrightError:
+        return browser.contexts[0]
+
+
+def ensure_session_exists(session_path: Path) -> None:
+    """Fail early when the scraper has no session to reuse.
+
+    Example:
+        ensure_session_exists(Path(".auth/99freelas.json"))
+    """
+    if session_path.exists():
+        return
+    message = f"Missing session file {session_path}; run login-99freelas first."
+    raise FileNotFoundError(message)
+
+
+def wait_for_projects_or_login(page_url: str, links: Locator) -> None:
+    """Wait for project links and reject expired login sessions.
+
+    Example:
+        wait_for_projects_or_login(page.url, page.locator("a"))
+    """
+    if is_login_url(page_url):
+        raise SessionExpiredError("Session expired; run login-99freelas again.")
+    try:
+        links.first.wait_for(state="attached", timeout=15_000)
+    except PlaywrightTimeoutError:
+        return
+
+
+def is_login_url(url: str) -> bool:
+    """Return whether a URL points to the 99freelas login page.
+
+    Example:
+        assert is_login_url("https://www.99freelas.com.br/login")
+    """
+    return "/login" in url
+
+
+def collect_projects(links: Locator) -> list[FreelanceProject]:
+    """Collect unique project cards from project link locators.
+
+    Example:
+        projects = collect_projects(page.locator("a[href*='/project']"))
+    """
+    projects: list[FreelanceProject] = []
+    seen_urls: set[str] = set()
+    count = min(links.count(), MAX_PROJECT_LINKS)
+    for index in range(count):
+        project = project_from_link(links.nth(index))
+        if project.project_url is None or project.project_url in seen_urls:
+            continue
+        seen_urls.add(project.project_url)
+        projects.append(project)
+    return projects
+
+
+def project_from_link(link: Locator) -> FreelanceProject:
+    """Build one project model from a project link and its nearest card text.
+
+    Example:
+        project = project_from_link(page.locator("a").first)
+    """
+    href = link.get_attribute("href")
+    project_url = absolute_project_url(href)
+    raw_text = nearest_project_text(link)
+    project = parse_project_card_text(raw_text, project_url)
+    if project.title:
+        return project
+    title = clean_text(link.inner_text(timeout=1_000))
+    return FreelanceProject(
+        title,
+        project.description,
+        project.budget,
+        project.skills,
+        project_url,
+        project.posted_at,
+        raw_text,
+    )
+
+
+def absolute_project_url(href: str | None) -> str | None:
+    """Normalize project hrefs into absolute URLs.
+
+    Example:
+        url = absolute_project_url("/project/foo")
+    """
+    if href is None or not href.strip():
+        return None
+    return urljoin(PROJECTS_URL, href)
+
+
+def nearest_project_text(link: Locator) -> str:
+    """Return visible text from the nearest likely project card.
+
+    Example:
+        text = nearest_project_text(page.locator("a").first)
+    """
+    for selector in card_ancestor_selectors():
+        text = locator_text_or_empty(link.locator(selector))
+        if len(text) >= 20:
+            return text
+    return locator_text_or_empty(link)
+
+
+def card_ancestor_selectors() -> tuple[str, ...]:
+    """Return ancestor selectors ordered from specific to generic.
+
+    Example:
+        selectors = card_ancestor_selectors()
+    """
+    return (
+        "xpath=ancestor::article[1]",
+        "xpath=ancestor::li[1]",
+        "xpath=ancestor::*[contains(@class, 'project')][1]",
+        "xpath=ancestor::div[1]",
+    )
+
+
+def locator_text_or_empty(locator: Locator) -> str:
+    """Read locator text while tolerating missing nodes.
+
+    Example:
+        text = locator_text_or_empty(page.locator("main"))
+    """
+    try:
+        return clean_text(locator.inner_text(timeout=1_000))
+    except PlaywrightTimeoutError:
+        return ""
+
+
+def parse_project_card_text(raw_text: str, project_url: str | None) -> FreelanceProject:
+    """Parse normalized card text into a project model.
+
+    Example:
+        project = parse_project_card_text("Site\nR$ 500", "https://example.com")
+    """
+    lines = normalized_lines(raw_text)
+    title = first_content_line(lines)
+    budget = first_matching_line(lines, r"R\$|orçamento|budget|a combinar")
+    posted_at = first_matching_line(lines, r"há \d+|publicado|posted|hoje|ontem")
+    skills = extract_skills(lines)
+    description = build_description(lines, title, budget, posted_at, skills)
+    return FreelanceProject(
+        title, description, budget, skills, project_url, posted_at, clean_text(raw_text)
+    )
+
+
+def normalized_lines(raw_text: str) -> list[str]:
+    """Split text into useful non-empty lines.
+
+    Example:
+        lines = normalized_lines(" A \n\n B ")
+    """
+    return [clean_text(line) for line in raw_text.splitlines() if clean_text(line)]
+
+
+def clean_text(text: str) -> str:
+    """Normalize whitespace in scraped text.
+
+    Example:
+        assert clean_text("a   b") == "a b"
+    """
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def first_content_line(lines: list[str]) -> str:
+    """Return the first line that looks like project content.
+
+    Example:
+        title = first_content_line(["Projeto Python"])
+    """
+    ignored = {"projeto", "projetos", "novo", "destaque"}
+    for line in lines:
+        if line.casefold() not in ignored:
+            return line
+    return ""
+
+
+def first_matching_line(lines: list[str], pattern: str) -> str | None:
+    r"""Return the first line matching a case-insensitive pattern.
+
+    Example:
+        budget = first_matching_line(["R$ 500"], r"R\$")
+    """
+    for line in lines:
+        if re.search(pattern, line, flags=re.IGNORECASE):
+            return line
+    return None
+
+
+def extract_skills(lines: list[str]) -> tuple[str, ...]:
+    """Extract skills from labelled card lines when available.
+
+    Example:
+        skills = extract_skills(["Habilidades: Python, Django"])
+    """
+    for line in lines:
+        if not re.search(r"habilidades|skills|tags", line, flags=re.IGNORECASE):
+            continue
+        _, _, values = line.partition(":")
+        return tuple(split_skill_values(values or line))
+    return ()
+
+
+def split_skill_values(text: str) -> list[str]:
+    """Split a labelled skills string into unique skill names.
+
+    Example:
+        values = split_skill_values("Python, Django")
+    """
+    values = [clean_text(value) for value in re.split(r"[,;|]", text)]
+    return [value for value in dict.fromkeys(values) if value]
+
+
+def build_description(
+    lines: list[str],
+    title: str,
+    budget: str | None,
+    posted_at: str | None,
+    skills: tuple[str, ...],
+) -> str:
+    """Build a concise description from remaining card lines.
+
+    Example:
+        description = build_description(["Title", "Body"], "Title", None, None, ())
+    """
+    blocked = {title, budget, posted_at, *skills, ""}
+    usable = [line for line in lines if line not in blocked]
+    return " ".join(usable[:4])
