@@ -7,6 +7,13 @@ import pytest
 
 from openfreela import cli
 from openfreela.freelas99_scraper import FreelanceProject
+from openfreela.project_evaluator import (
+    DEFAULT_CV_PATH,
+    DEFAULT_EVALUATIONS_PATH,
+    DEFAULT_NOTIFIED_PROJECTS_PATH,
+    DEFAULT_PROMPT_PATH,
+    ProjectEvaluation,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -64,6 +71,80 @@ def test_main_exits_with_actionable_error(monkeypatch: pytest.MonkeyPatch) -> No
 
     with pytest.raises(SystemExit, match="missing"):
         cli.main(["login-99freelas", "--session", "missing.json"])
+
+
+def test_main_runs_evaluate_command(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[cli.EvaluateOptions] = []
+
+    def run_evaluate(options: cli.EvaluateOptions) -> None:
+        calls.append(options)
+
+    monkeypatch.setattr(cli, "run_evaluate", run_evaluate)
+
+    cli.main(
+        [
+            "evaluate-projects",
+            "--projects",
+            str(tmp_path / "projects.json"),
+            "--cv",
+            str(tmp_path / "cv.md"),
+            "--prompt",
+            str(tmp_path / "prompt.md"),
+            "--output",
+            str(tmp_path / "evaluations.json"),
+            "--notified",
+            str(tmp_path / "notified.json"),
+            "--min-score",
+            "75",
+        ]
+    )
+
+    assert calls[0].min_profile_match == 75
+    assert calls[0].cv_path == tmp_path / "cv.md"
+
+
+def test_run_evaluate_calls_project_evaluator(monkeypatch: pytest.MonkeyPatch) -> None:
+    evaluation = ProjectEvaluation(
+        "url", "Title", 75, 70, "apply", "", "", (), (), (), (), ""
+    )
+    calls: list[object] = []
+
+    monkeypatch.setattr(cli, "ollama_client_from_env", lambda: object())
+    monkeypatch.setattr(cli, "telegram_from_env", lambda: object())
+
+    def evaluate_projects(
+        config: object, judge: object, notifier: object
+    ) -> list[ProjectEvaluation]:
+        calls.extend([config, judge, notifier])
+        return [evaluation]
+
+    monkeypatch.setattr(
+        cli,
+        "evaluate_project_file",
+        evaluate_projects,
+    )
+
+    cli.run_evaluate(
+        cli.EvaluateOptions(
+            cli.DEFAULT_PROJECTS_OUTPUT_PATH,
+            DEFAULT_CV_PATH,
+            DEFAULT_PROMPT_PATH,
+            DEFAULT_EVALUATIONS_PATH,
+            DEFAULT_NOTIFIED_PROJECTS_PATH,
+            75,
+        )
+    )
+
+    assert len(calls) == 3
+
+
+def test_required_env_rejects_missing_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+
+    with pytest.raises(RuntimeError, match="TELEGRAM_BOT_TOKEN"):
+        cli.required_env("TELEGRAM_BOT_TOKEN")
 
 
 def test_build_parser_requires_known_command() -> None:
