@@ -10,7 +10,7 @@ from openfreela.browser_session import DEFAULT_SESSION_PATH, save_manual_login_s
 from openfreela.freelas99_scraper import (
     FreelanceProject,
     SessionExpiredError,
-    scrape_first_projects_page,
+    scrape_projects_pages,
 )
 
 DEFAULT_PROJECTS_OUTPUT_PATH = Path("data/99freelas-projects.json")
@@ -152,9 +152,7 @@ def run_scrape(options: ScrapeOptions) -> None:
             ScrapeOptions(Path(".auth/session.json"), Path("data/out.json"), True)
         )
     """
-    projects = scrape_first_projects_page(
-        options.session_path, headless=options.headless
-    )
+    projects = scrape_projects_pages(options.session_path, headless=options.headless)
     save_projects(options.output_path, projects)
     print(f"Saved {len(projects)} projects to {options.output_path}")
 

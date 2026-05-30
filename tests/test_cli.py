@@ -40,7 +40,7 @@ def test_main_runs_scrape_command_and_saves_json(
         assert headless
         return [project]
 
-    monkeypatch.setattr(cli, "scrape_first_projects_page", scrape_projects)
+    monkeypatch.setattr(cli, "scrape_projects_pages", scrape_projects)
 
     cli.main(
         [

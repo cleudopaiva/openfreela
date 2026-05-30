@@ -3,16 +3,16 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
-from playwright.sync_api import Browser, BrowserContext, Locator, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Locator, Page, sync_playwright
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from openfreela.cdp_browser import launch_cdp_browser
 from openfreela.freelas99_html import ParsedProjectItem, parse_result_item_html
 
-PROJECTS_URL = "https://www.99freelas.com.br/projects"
+PROJECTS_URL = "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software"
 PROJECT_LINK_SELECTOR = (
     "li.result-item h1.title a[href*='/project/'], "
     "li.result-item h1.title a[href*='/projeto/'], "
@@ -23,6 +23,7 @@ RESULT_ITEM_SELECTOR = (
     "xpath=ancestor::li[contains(concat(' ', normalize-space(@class), ' '), "
     "' result-item ')][1]"
 )
+LAST_PAGE_SELECTOR = ".pagination-component .go-to-last-page[data-page]"
 MAX_PROJECT_LINKS = 80
 
 if TYPE_CHECKING:
@@ -76,15 +77,15 @@ class FreelanceProject:
         }
 
 
-def scrape_first_projects_page(
+def scrape_projects_pages(
     session_path: Path,
     *,
     headless: bool = True,
 ) -> list[FreelanceProject]:
-    """Scrape the first authenticated 99freelas projects page.
+    """Scrape all authenticated 99freelas software project pages.
 
     Example:
-        projects = scrape_first_projects_page(Path(".auth/99freelas.json"))
+        projects = scrape_projects_pages(Path(".auth/99freelas.json"))
     """
     ensure_session_exists(session_path)
     cdp_browser = launch_cdp_browser(headless=headless)
@@ -92,6 +93,19 @@ def scrape_first_projects_page(
         return scrape_connected_browser(cdp_browser.get_endpoint_url(), session_path)
     finally:
         cdp_browser.driver.stop()
+
+
+def scrape_first_projects_page(
+    session_path: Path,
+    *,
+    headless: bool = True,
+) -> list[FreelanceProject]:
+    """Compatibility wrapper for scraping all software project pages.
+
+    Example:
+        projects = scrape_first_projects_page(Path(".auth/99freelas.json"))
+    """
+    return scrape_projects_pages(session_path, headless=headless)
 
 
 def scrape_connected_browser(
@@ -105,12 +119,103 @@ def scrape_connected_browser(
     with sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp(endpoint_url)
         context = browser_context_with_session(browser, session_path)
-        page = context.new_page()
-        page.goto(PROJECTS_URL, wait_until="domcontentloaded")
-        wait_for_projects_or_login(page.url, page.locator(PROJECT_LINK_SELECTOR))
-        projects = collect_projects(page.locator(PROJECT_LINK_SELECTOR))
+        projects = scrape_context_project_pages(context)
         browser.close()
         return projects
+
+
+def scrape_context_project_pages(context: BrowserContext) -> list[FreelanceProject]:
+    """Scrape and dedupe every paginated software projects page.
+
+    Example:
+        projects = scrape_context_project_pages(context)
+    """
+    page = context.new_page()
+    projects = collect_projects_from_page(page, 1)
+    last_page = last_projects_page(page)
+    for page_number in range(2, last_page + 1):
+        projects.extend(collect_projects_from_page(page, page_number))
+    return dedupe_projects(projects)
+
+
+def collect_projects_from_page(page: Page, page_number: int) -> list[FreelanceProject]:
+    """Navigate to one projects page and collect its project cards.
+
+    Example:
+        projects = collect_projects_from_page(page, 2)
+    """
+    page.goto(project_page_url(page_number), wait_until="domcontentloaded")
+    wait_for_projects_or_login(page.url, page.locator(PROJECT_LINK_SELECTOR))
+    return collect_projects(page.locator(PROJECT_LINK_SELECTOR))
+
+
+def last_projects_page(page: Page) -> int:
+    """Return the last projects page number from the pagination component.
+
+    Example:
+        count = last_projects_page(page)
+    """
+    try:
+        locator = page.locator(LAST_PAGE_SELECTOR)
+        if locator.count() == 0:
+            return 1
+        value = locator.first.get_attribute("data-page", timeout=1_000)
+    except PlaywrightError, PlaywrightTimeoutError:
+        return 1
+    return positive_int_or_default(value, 1)
+
+
+def project_page_url(page_number: int) -> str:
+    """Return the software category URL for one page number.
+
+    Example:
+        url = project_page_url(2)
+    """
+    if page_number < 1:
+        message = f"Invalid project page {page_number}; expected page >= 1."
+        raise ValueError(message)
+    if page_number == 1:
+        return PROJECTS_URL
+    return url_with_page(PROJECTS_URL, page_number)
+
+
+def url_with_page(url: str, page_number: int) -> str:
+    """Return a URL with its page query parameter set.
+
+    Example:
+        url = url_with_page(PROJECTS_URL, 2)
+    """
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["page"] = str(page_number)
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
+def positive_int_or_default(value: str | None, default: int) -> int:
+    """Parse a positive integer or return the provided default.
+
+    Example:
+        page = positive_int_or_default("37", 1)
+    """
+    if value is None or not value.isdecimal():
+        return default
+    return max(int(value), default)
+
+
+def dedupe_projects(projects: list[FreelanceProject]) -> list[FreelanceProject]:
+    """Return projects deduplicated by project URL while preserving order.
+
+    Example:
+        unique = dedupe_projects(projects)
+    """
+    unique_projects: list[FreelanceProject] = []
+    seen_urls: set[str] = set()
+    for project in projects:
+        if project.project_url is None or project.project_url in seen_urls:
+            continue
+        seen_urls.add(project.project_url)
+        unique_projects.append(project)
+    return unique_projects
 
 
 def browser_context_with_session(

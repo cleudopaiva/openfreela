@@ -15,17 +15,21 @@ from openfreela.freelas99_scraper import (
     browser_context_with_session,
     build_description,
     collect_projects,
+    dedupe_projects,
     ensure_session_exists,
     extract_skills,
     first_content_line,
     first_matching_line,
     is_login_url,
+    last_projects_page,
     locator_text_or_empty,
     nearest_project_text,
     parse_project_card_text,
     project_from_link,
     project_from_parsed_item,
-    scrape_first_projects_page,
+    project_page_url,
+    scrape_context_project_pages,
+    scrape_projects_pages,
     split_skill_values,
     wait_for_projects_or_login,
 )
@@ -33,7 +37,7 @@ from openfreela.freelas99_scraper import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Browser, Locator
+    from playwright.sync_api import Browser, BrowserContext, Locator, Page
 
 
 class FakeCdpDriver:
@@ -171,6 +175,59 @@ class FakeLinksLocator:
         return self.links[index]
 
 
+class FakePageAttributeLocator:
+    """Fake locator for pagination data-page extraction.
+
+    Example:
+        locator = FakePageAttributeLocator("37")
+    """
+
+    def __init__(self, value: str | None) -> None:
+        self.value = value
+        self.first = self
+
+    def count(self) -> int:
+        """Return whether the fake pagination element exists."""
+        return 1 if self.value is not None else 0
+
+    def get_attribute(self, name: str, *, timeout: int) -> str | None:
+        """Return a fake data-page attribute."""
+        assert name == "data-page"
+        assert timeout == 1_000
+        return self.value
+
+
+class FakePaginationPage:
+    """Fake page with a pagination component.
+
+    Example:
+        page = FakePaginationPage("37")
+    """
+
+    def __init__(self, last_page: str | None) -> None:
+        self.last_page = last_page
+
+    def locator(self, selector: str) -> FakePageAttributeLocator:
+        """Return the pagination locator requested by the scraper."""
+        assert selector == freelas99_scraper.LAST_PAGE_SELECTOR
+        return FakePageAttributeLocator(self.last_page)
+
+
+class FakePagingContext:
+    """Fake browser context for all-pages orchestration tests.
+
+    Example:
+        context = FakePagingContext()
+    """
+
+    def __init__(self) -> None:
+        self.page = object()
+
+    def new_page(self) -> object:
+        """Return a stable fake page object."""
+        return self.page
+
+
 def test_parse_project_card_text_extracts_visible_fields() -> None:
     raw_text = """
     Criar API em Python
@@ -246,7 +303,7 @@ def test_ensure_session_exists_accepts_existing_file(tmp_path: Path) -> None:
     ensure_session_exists(session_path)
 
 
-def test_scrape_first_projects_page_stops_browser(
+def test_scrape_projects_pages_stops_browser(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -275,7 +332,7 @@ def test_scrape_first_projects_page_stops_browser(
         scrape_browser,
     )
 
-    projects = scrape_first_projects_page(session_path, headless=True)
+    projects = scrape_projects_pages(session_path, headless=True)
 
     assert projects == expected
     assert calls == [("http://127.0.0.1:9222", session_path)]
@@ -298,6 +355,69 @@ def test_browser_context_with_session_falls_back_to_default(tmp_path: Path) -> N
         browser_context_with_session(browser, tmp_path / "session.json")
         is fake_browser.contexts[0]
     )
+
+
+def test_project_page_url_uses_software_category() -> None:
+    assert project_page_url(1) == (
+        "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software"
+    )
+    assert project_page_url(2) == (
+        "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software&page=2"
+    )
+
+
+def test_project_page_url_rejects_invalid_page() -> None:
+    with pytest.raises(ValueError, match="expected page >= 1"):
+        project_page_url(0)
+
+
+def test_last_projects_page_reads_ultima_data_page() -> None:
+    page = cast("Page", FakePaginationPage("37"))
+
+    assert last_projects_page(page) == 37
+
+
+def test_last_projects_page_defaults_when_button_is_missing() -> None:
+    page = cast("Page", FakePaginationPage(None))
+
+    assert last_projects_page(page) == 1
+
+
+def test_scrape_context_project_pages_collects_all_pages_and_dedupes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+    first_project = FreelanceProject(
+        "A", "", None, (), "url-a", None, None, None, None, None, ""
+    )
+    duplicate = FreelanceProject(
+        "A2", "", None, (), "url-a", None, None, None, None, None, ""
+    )
+    second_project = FreelanceProject(
+        "B", "", None, (), "url-b", None, None, None, None, None, ""
+    )
+
+    def collect_page(page: object, page_number: int) -> list[FreelanceProject]:
+        calls.append(page_number)
+        return [first_project] if page_number == 1 else [duplicate, second_project]
+
+    monkeypatch.setattr(freelas99_scraper, "collect_projects_from_page", collect_page)
+    monkeypatch.setattr(freelas99_scraper, "last_projects_page", lambda page: 2)
+
+    projects = scrape_context_project_pages(cast("BrowserContext", FakePagingContext()))
+
+    assert calls == [1, 2]
+    assert [project.project_url for project in projects] == ["url-a", "url-b"]
+
+
+def test_dedupe_projects_ignores_missing_and_duplicate_urls() -> None:
+    projects = [
+        FreelanceProject("A", "", None, (), None, None, None, None, None, None, ""),
+        FreelanceProject("A", "", None, (), "url-a", None, None, None, None, None, ""),
+        FreelanceProject("A2", "", None, (), "url-a", None, None, None, None, None, ""),
+    ]
+
+    assert [project.project_url for project in dedupe_projects(projects)] == ["url-a"]
 
 
 def test_wait_for_projects_or_login_rejects_login_redirect() -> None:
