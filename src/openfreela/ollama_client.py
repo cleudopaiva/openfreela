@@ -1,12 +1,27 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from openfreela.ai_request_logger import (
+    AIRequestLog,
+    AIRequestLogger,
+    safe_metric_dict,
+)
+
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "qwen3.5:latest"
+OLLAMA_METRIC_KEYS = (
+    "total_duration",
+    "load_duration",
+    "prompt_eval_count",
+    "prompt_eval_duration",
+    "eval_count",
+    "eval_duration",
+)
 
 
 @dataclass(frozen=True)
@@ -20,6 +35,7 @@ class OllamaClient:
     base_url: str
     model: str
     timeout_seconds: int = 300
+    logger: AIRequestLogger | None = None
 
     def chat_json(self, prompt: str) -> str:
         """Send a prompt to Ollama and return the assistant content.
@@ -27,10 +43,47 @@ class OllamaClient:
         Example:
             content = client.chat_json("Return JSON")
         """
-        response = post_json(
-            self.chat_url(), self.request_payload(prompt), self.timeout_seconds
+        started_at = time.monotonic()
+        try:
+            response = post_json(
+                self.chat_url(), self.request_payload(prompt), self.timeout_seconds
+            )
+            content = response_message_content(response)
+        except Exception as error:
+            self.log_request(prompt, "", started_at, "error", str(error), {})
+            raise
+        metrics = safe_metric_dict(response, OLLAMA_METRIC_KEYS)
+        self.log_request(prompt, content, started_at, "ok", "", metrics)
+        return content
+
+    def log_request(
+        self,
+        prompt: str,
+        content: str,
+        started_at: float,
+        status: str,
+        error: str,
+        metrics: dict[str, str | int | float | bool | None],
+    ) -> None:
+        """Record safe Ollama request metadata when a logger is configured.
+
+        Example:
+            client.log_request("prompt", "{}", started_at, "ok", "", {})
+        """
+        if self.logger is None:
+            return
+        entry = AIRequestLog(
+            "ollama",
+            self.model,
+            self.base_url,
+            len(prompt),
+            len(content),
+            time.monotonic() - started_at,
+            status,
+            error,
+            metrics,
         )
-        return response_message_content(response)
+        self.logger.record(entry)
 
     def chat_url(self) -> str:
         """Return the Ollama chat endpoint URL.

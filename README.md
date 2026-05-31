@@ -123,7 +123,9 @@ prompts/project-fit.md
 
 Edit that file whenever you want to change how the AI judges projects.
 
-The default model is:
+Copy `.env.example` to `.env` if you prefer local configuration over shell exports. Values already exported in your shell take precedence over `.env`.
+
+The default provider is Ollama and the default local model is:
 
 ```text
 qwen3.5:latest
@@ -145,17 +147,45 @@ export TELEGRAM_CHAT_ID="your-chat-id"
 Optional environment variables:
 
 ```bash
+export OPENFREELA_AI_PROVIDER="ollama"
 export OLLAMA_BASE_URL="http://localhost:11434"
 export OLLAMA_MODEL="qwen3.5:latest"
 export OPENFREELA_OLLAMA_TIMEOUT="300"
 export OPENFREELA_MIN_PROFILE_MATCH="75"
 ```
 
+To use OpenAI instead:
+
+```bash
+export OPENFREELA_AI_PROVIDER="openai"
+export OPENAI_API_KEY="your-openai-api-key"
+export OPENAI_MODEL="gpt-4o-mini"
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+export OPENFREELA_OPENAI_TIMEOUT="300"
+```
+
+Check the configured AI provider before evaluating real projects:
+
+```bash
+uv run openfreela test-ai --ai-provider ollama --ai-verbose
+uv run openfreela test-ai --ai-provider openai
+```
+
 Evaluate scraped projects:
 
 ```bash
 uv run openfreela evaluate-projects
+uv run openfreela evaluate-projects --ai-provider openai
+uv run openfreela evaluate-projects --ai-provider ollama --ai-verbose
 ```
+
+For local Ollama debugging, write safe request metadata to JSONL:
+
+```bash
+uv run openfreela evaluate-projects --ai-provider ollama --ai-log data/ai-requests.jsonl
+```
+
+AI logs include provider, model, base URL, duration, prompt/response character counts, and Ollama timing/token metrics when available. They do not include your full CV, prompt, API token, or model response body.
 
 The evaluator reads:
 

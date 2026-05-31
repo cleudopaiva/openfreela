@@ -7,16 +7,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from openfreela.ai_provider import (
+    AI_PROVIDERS,
+    AIProviderOptions,
+    ai_client_from_options,
+    env_ai_provider,
+)
 from openfreela.browser_session import DEFAULT_SESSION_PATH, save_manual_login_session
+from openfreela.env_file import load_dotenv
 from openfreela.freelas99_scraper import (
     FreelanceProject,
     SessionExpiredError,
     scrape_projects_pages,
-)
-from openfreela.ollama_client import (
-    DEFAULT_OLLAMA_BASE_URL,
-    DEFAULT_OLLAMA_MODEL,
-    OllamaClient,
 )
 from openfreela.project_evaluator import (
     DEFAULT_CV_PATH,
@@ -26,6 +28,7 @@ from openfreela.project_evaluator import (
     DEFAULT_PROMPT_PATH,
     EvaluationRunConfig,
     evaluate_project_file,
+    load_json_object,
 )
 from openfreela.telegram_notifier import TelegramNotifier
 
@@ -78,6 +81,22 @@ class EvaluateOptions:
     output_path: Path
     notified_path: Path
     min_profile_match: int
+    ai_provider: str
+    ai_verbose: bool
+    ai_log_path: Path | None
+
+
+@dataclass(frozen=True)
+class TestAIOptions:
+    """Options for checking the configured AI provider.
+
+    Example:
+        options = TestAIOptions("ollama", True, None)
+    """
+
+    ai_provider: str
+    ai_verbose: bool
+    ai_log_path: Path | None
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -86,9 +105,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     Example:
         main(["scrape-99freelas"])
     """
-    parser = build_parser()
-    namespace = parser.parse_args(argv)
+    load_dotenv()
     try:
+        parser = build_parser()
+        namespace = parser.parse_args(argv)
         run_command(namespace)
     except (
         ConnectionError,
@@ -111,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_login_parser(subparsers)
     add_scrape_parser(subparsers)
     add_evaluate_parser(subparsers)
+    add_test_ai_parser(subparsers)
     return parser
 
 
@@ -155,6 +176,32 @@ def add_evaluate_parser(
     parser.add_argument("--output", default=str(DEFAULT_EVALUATIONS_PATH))
     parser.add_argument("--notified", default=str(DEFAULT_NOTIFIED_PROJECTS_PATH))
     parser.add_argument("--min-score", type=int, default=env_min_profile_match())
+    add_ai_arguments(parser)
+
+
+def add_test_ai_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register the AI provider healthcheck command.
+
+    Example:
+        add_test_ai_parser(parser.add_subparsers())
+    """
+    parser = subparsers.add_parser("test-ai")
+    add_ai_arguments(parser)
+
+
+def add_ai_arguments(parser: argparse.ArgumentParser) -> None:
+    """Register shared AI provider arguments.
+
+    Example:
+        add_ai_arguments(parser)
+    """
+    parser.add_argument(
+        "--ai-provider", choices=AI_PROVIDERS, default=env_ai_provider()
+    )
+    parser.add_argument("--ai-verbose", action="store_true")
+    parser.add_argument("--ai-log")
 
 
 def run_command(namespace: argparse.Namespace) -> None:
@@ -172,6 +219,9 @@ def run_command(namespace: argparse.Namespace) -> None:
         return
     if command == "evaluate-projects":
         run_evaluate(evaluate_options(namespace))
+        return
+    if command == "test-ai":
+        run_test_ai(test_ai_options(namespace))
 
 
 def login_options(namespace: argparse.Namespace) -> LoginOptions:
@@ -209,6 +259,22 @@ def evaluate_options(namespace: argparse.Namespace) -> EvaluateOptions:
         output_path=Path(str(namespace.output)),
         notified_path=Path(str(namespace.notified)),
         min_profile_match=int(namespace.min_score),
+        ai_provider=str(namespace.ai_provider),
+        ai_verbose=bool(namespace.ai_verbose),
+        ai_log_path=optional_path(namespace.ai_log),
+    )
+
+
+def test_ai_options(namespace: argparse.Namespace) -> TestAIOptions:
+    """Convert parsed AI test arguments into typed options.
+
+    Example:
+        options = test_ai_options(parser.parse_args(["test-ai"]))
+    """
+    return TestAIOptions(
+        ai_provider=str(namespace.ai_provider),
+        ai_verbose=bool(namespace.ai_verbose),
+        ai_log_path=optional_path(namespace.ai_log),
     )
 
 
@@ -242,10 +308,25 @@ def run_evaluate(options: EvaluateOptions) -> None:
         run_evaluate(options)
     """
     config = evaluation_config(options)
-    evaluations = evaluate_project_file(
-        config, ollama_client_from_env(), telegram_from_env()
-    )
+    judge = ai_client_from_options(ai_provider_options(options))
+    evaluations = evaluate_project_file(config, judge, telegram_from_env())
     print(f"Saved {len(evaluations)} evaluations to {options.output_path}")
+
+
+def run_test_ai(options: TestAIOptions) -> None:
+    """Send a tiny JSON prompt to the configured AI provider.
+
+    Example:
+        run_test_ai(TestAIOptions("ollama", False, None))
+    """
+    judge = ai_client_from_options(
+        AIProviderOptions(options.ai_provider, options.ai_verbose, options.ai_log_path)
+    )
+    content = judge.chat_json('Return exactly this JSON object: {"ok": true}')
+    payload = load_json_object(content)
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        raise ValueError(f"Invalid AI test response {payload!r}; expected ok=true.")
+    print(f"AI provider test passed: {options.ai_provider}")
 
 
 def evaluation_config(options: EvaluateOptions) -> EvaluationRunConfig:
@@ -264,16 +345,15 @@ def evaluation_config(options: EvaluateOptions) -> EvaluationRunConfig:
     )
 
 
-def ollama_client_from_env() -> OllamaClient:
-    """Create an Ollama client from environment variables.
+def ai_provider_options(options: EvaluateOptions) -> AIProviderOptions:
+    """Return AI provider options from evaluation options.
 
     Example:
-        client = ollama_client_from_env()
+        ai_options = ai_provider_options(options)
     """
-    base_url = os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
-    model = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
-    timeout = env_int("OPENFREELA_OLLAMA_TIMEOUT", 300)
-    return OllamaClient(base_url, model, timeout)
+    return AIProviderOptions(
+        options.ai_provider, options.ai_verbose, options.ai_log_path
+    )
 
 
 def telegram_from_env() -> TelegramNotifier:
@@ -323,6 +403,17 @@ def env_int(name: str, default: int) -> int:
     if value is None:
         return default
     return int(value)
+
+
+def optional_path(value: object) -> Path | None:
+    """Return a Path for a provided CLI value, otherwise None.
+
+    Example:
+        path = optional_path("data/ai.jsonl")
+    """
+    if value is None:
+        return None
+    return Path(str(value))
 
 
 def save_projects(output_path: Path, projects: list[FreelanceProject]) -> None:

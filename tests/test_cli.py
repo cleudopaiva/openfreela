@@ -98,11 +98,19 @@ def test_main_runs_evaluate_command(
             str(tmp_path / "notified.json"),
             "--min-score",
             "75",
+            "--ai-provider",
+            "openai",
+            "--ai-verbose",
+            "--ai-log",
+            str(tmp_path / "ai.jsonl"),
         ]
     )
 
     assert calls[0].min_profile_match == 75
     assert calls[0].cv_path == tmp_path / "cv.md"
+    assert calls[0].ai_provider == "openai"
+    assert calls[0].ai_verbose
+    assert calls[0].ai_log_path == tmp_path / "ai.jsonl"
 
 
 def test_run_evaluate_calls_project_evaluator(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,7 +119,7 @@ def test_run_evaluate_calls_project_evaluator(monkeypatch: pytest.MonkeyPatch) -
     )
     calls: list[object] = []
 
-    monkeypatch.setattr(cli, "ollama_client_from_env", lambda: object())
+    monkeypatch.setattr(cli, "ai_client_from_options", lambda options: object())
     monkeypatch.setattr(cli, "telegram_from_env", lambda: object())
 
     def evaluate_projects(
@@ -134,6 +142,9 @@ def test_run_evaluate_calls_project_evaluator(monkeypatch: pytest.MonkeyPatch) -
             DEFAULT_EVALUATIONS_PATH,
             DEFAULT_NOTIFIED_PROJECTS_PATH,
             75,
+            "ollama",
+            False,
+            None,
         )
     )
 
@@ -147,14 +158,43 @@ def test_required_env_rejects_missing_value(monkeypatch: pytest.MonkeyPatch) -> 
         cli.required_env("TELEGRAM_BOT_TOKEN")
 
 
-def test_ollama_client_from_env_uses_timeout_env(
+def test_main_loads_dotenv_before_parser_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[cli.TestAIOptions] = []
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text("OPENFREELA_AI_PROVIDER=openai\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENFREELA_AI_PROVIDER", raising=False)
+    monkeypatch.setattr(cli, "run_test_ai", calls.append)
+
+    cli.main(["test-ai"])
+
+    assert calls[0].ai_provider == "openai"
+
+
+def test_run_test_ai_validates_provider_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OPENFREELA_OLLAMA_TIMEOUT", "42")
+    class FakeJudge:
+        def chat_json(self, prompt: str) -> str:
+            return '{"ok": true}'
 
-    client = cli.ollama_client_from_env()
+    monkeypatch.setattr(cli, "ai_client_from_options", lambda options: FakeJudge())
 
-    assert client.timeout_seconds == 42
+    cli.run_test_ai(cli.TestAIOptions("ollama", False, None))
+
+
+def test_run_test_ai_rejects_bad_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeJudge:
+        def chat_json(self, prompt: str) -> str:
+            return '{"ok": false}'
+
+    monkeypatch.setattr(cli, "ai_client_from_options", lambda options: FakeJudge())
+
+    with pytest.raises(ValueError, match="expected ok=true"):
+        cli.run_test_ai(cli.TestAIOptions("ollama", False, None))
 
 
 def test_build_parser_requires_known_command() -> None:
