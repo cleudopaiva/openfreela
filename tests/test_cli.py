@@ -98,6 +98,8 @@ def test_main_runs_evaluate_command(
             str(tmp_path / "notified.json"),
             "--min-score",
             "75",
+            "--max-proposals",
+            "30",
             "--ai-provider",
             "openai",
             "--ai-verbose",
@@ -107,6 +109,7 @@ def test_main_runs_evaluate_command(
     )
 
     assert calls[0].min_profile_match == 75
+    assert calls[0].max_proposals == 30
     assert calls[0].cv_path == tmp_path / "cv.md"
     assert calls[0].ai_provider == "openai"
     assert calls[0].ai_verbose
@@ -142,6 +145,7 @@ def test_run_evaluate_calls_project_evaluator(monkeypatch: pytest.MonkeyPatch) -
             DEFAULT_EVALUATIONS_PATH,
             DEFAULT_NOTIFIED_PROJECTS_PATH,
             75,
+            30,
             "ollama",
             False,
             None,

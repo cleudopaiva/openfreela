@@ -95,14 +95,19 @@ class FakeNotifier:
 
 
 def project_payload(
-    title: str = "API Project", project_url: str = "https://example.com/project"
+    title: str = "API Project",
+    project_url: str = "https://example.com/project",
+    proposals: int | None = None,
 ) -> dict[str, object]:
     """Return a minimal scraped project payload for tests.
 
     Example:
         project = project_payload()
     """
-    return {"title": title, "project_url": project_url}
+    project: dict[str, object] = {"title": title, "project_url": project_url}
+    if proposals is not None:
+        project["proposals"] = proposals
+    return project
 
 
 def ai_payload(
@@ -251,8 +256,29 @@ def test_evaluate_project_file_logs_failure_without_saving_fake_result(
     assert "Failed 1/2: Bad: model failed" in capsys.readouterr().out
 
 
+def test_evaluate_project_file_skips_projects_above_max_proposals(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    projects = [
+        project_payload("Too Busy", "busy-url", 31),
+        project_payload("Allowed", "allowed-url", 30),
+        project_payload("Unknown", "unknown-url"),
+    ]
+    paths = write_evaluation_inputs(tmp_path, projects, max_proposals=30)
+    judge = FakeJudge(json.dumps(ai_payload()))
+
+    evaluations = evaluate_project_file(paths, judge, FakeNotifier())
+
+    saved_urls = [evaluation.project_url for evaluation in evaluations]
+    assert saved_urls == ["allowed-url", "unknown-url"]
+    assert len(judge.prompts) == 2
+    assert "Skipping 1/3: Too Busy" in capsys.readouterr().out
+
+
 def write_evaluation_inputs(
-    tmp_path: Path, projects: list[dict[str, object]] | None = None
+    tmp_path: Path,
+    projects: list[dict[str, object]] | None = None,
+    max_proposals: int | None = None,
 ) -> EvaluationRunConfig:
     """Write test input files and return an evaluator config.
 
@@ -268,7 +294,13 @@ def write_evaluation_inputs(
     cv_path.write_text("My CV")
     prompt_path.write_text("CV {{cv}} Project {{project}}")
     return EvaluationRunConfig(
-        projects_path, cv_path, prompt_path, output_path, notified_path, 75
+        projects_path,
+        cv_path,
+        prompt_path,
+        output_path,
+        notified_path,
+        75,
+        max_proposals,
     )
 
 

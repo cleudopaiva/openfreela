@@ -108,6 +108,9 @@ def evaluate_project_step(
         )
     """
     title = project_title(project)
+    if exceeds_max_proposals(project, config.max_proposals):
+        print(proposal_skip_message(index, total, title, project, config.max_proposals))
+        return
     if project_already_evaluated(project, evaluated_urls):
         print(f"Skipping {index}/{total}: {title} (already evaluated)")
         return
@@ -197,6 +200,43 @@ def project_already_evaluated(
     """
     value = project.get("project_url")
     return isinstance(value, str) and value in evaluated_urls
+
+
+def exceeds_max_proposals(
+    project: dict[str, object], max_proposals: int | None
+) -> bool:
+    """Return whether a project should be skipped due to too many proposals.
+
+    Example:
+        skip = exceeds_max_proposals({"proposals": 31}, 30)
+    """
+    if max_proposals is None:
+        return False
+    proposals = project.get("proposals")
+    return (
+        isinstance(proposals, int)
+        and not isinstance(proposals, bool)
+        and proposals > max_proposals
+    )
+
+
+def proposal_skip_message(
+    index: int,
+    total: int,
+    title: str,
+    project: dict[str, object],
+    max_proposals: int | None,
+) -> str:
+    """Return a progress message for a proposal-count skip.
+
+    Example:
+        message = proposal_skip_message(1, 2, "API", {"proposals": 31}, 30)
+    """
+    proposals = project.get("proposals")
+    return (
+        f"Skipping {index}/{total}: {title} "
+        f"(proposals={proposals} > max_proposals={max_proposals})"
+    )
 
 
 def project_title(project: dict[str, object]) -> str:

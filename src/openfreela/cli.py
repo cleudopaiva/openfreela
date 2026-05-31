@@ -71,7 +71,7 @@ class EvaluateOptions:
     Example:
         options = EvaluateOptions(
             Path("projects.json"), Path("cv.md"), Path("prompt.md"),
-            Path("out.json"), Path("notified.json"), 75
+            Path("out.json"), Path("notified.json"), 75, 30
         )
     """
 
@@ -81,6 +81,7 @@ class EvaluateOptions:
     output_path: Path
     notified_path: Path
     min_profile_match: int
+    max_proposals: int | None
     ai_provider: str
     ai_verbose: bool
     ai_log_path: Path | None
@@ -176,6 +177,7 @@ def add_evaluate_parser(
     parser.add_argument("--output", default=str(DEFAULT_EVALUATIONS_PATH))
     parser.add_argument("--notified", default=str(DEFAULT_NOTIFIED_PROJECTS_PATH))
     parser.add_argument("--min-score", type=int, default=env_min_profile_match())
+    parser.add_argument("--max-proposals", type=int, default=env_max_proposals())
     add_ai_arguments(parser)
 
 
@@ -259,6 +261,9 @@ def evaluate_options(namespace: argparse.Namespace) -> EvaluateOptions:
         output_path=Path(str(namespace.output)),
         notified_path=Path(str(namespace.notified)),
         min_profile_match=int(namespace.min_score),
+        max_proposals=optional_non_negative_int(
+            namespace.max_proposals, "--max-proposals"
+        ),
         ai_provider=str(namespace.ai_provider),
         ai_verbose=bool(namespace.ai_verbose),
         ai_log_path=optional_path(namespace.ai_log),
@@ -342,6 +347,7 @@ def evaluation_config(options: EvaluateOptions) -> EvaluationRunConfig:
         options.output_path,
         options.notified_path,
         options.min_profile_match,
+        options.max_proposals,
     )
 
 
@@ -393,6 +399,18 @@ def env_min_profile_match() -> int:
     return int(value)
 
 
+def env_max_proposals() -> int | None:
+    """Return the optional proposal-count AI evaluation threshold.
+
+    Example:
+        max_proposals = env_max_proposals()
+    """
+    value = os.environ.get("OPENFREELA_MAX_PROPOSALS")
+    if value is None:
+        return None
+    return optional_non_negative_int(int(value), "OPENFREELA_MAX_PROPOSALS")
+
+
 def env_int(name: str, default: int) -> int:
     """Return an integer environment variable or a default value.
 
@@ -414,6 +432,22 @@ def optional_path(value: object) -> Path | None:
     if value is None:
         return None
     return Path(str(value))
+
+
+def optional_non_negative_int(value: object, label: str) -> int | None:
+    """Return an optional non-negative integer value.
+
+    Example:
+        limit = optional_non_negative_int(30, "--max-proposals")
+    """
+    if value is None:
+        return None
+    if not isinstance(value, int):
+        raise ValueError(f"Invalid {label}={value!r}; expected integer.")
+    parsed = value
+    if parsed >= 0:
+        return parsed
+    raise ValueError(f"Invalid {label}={parsed}; expected non-negative integer.")
 
 
 def save_projects(output_path: Path, projects: list[FreelanceProject]) -> None:

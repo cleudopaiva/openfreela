@@ -87,7 +87,7 @@ class EvaluationRunConfig:
     Example:
         config = EvaluationRunConfig(
             Path("projects.json"), Path("cv.md"), Path("prompt.md"),
-            Path("out.json"), Path("notified.json"), 75
+            Path("out.json"), Path("notified.json"), 75, 30
         )
     """
 
@@ -97,6 +97,7 @@ class EvaluationRunConfig:
     output_path: Path
     notified_path: Path
     min_profile_match: int = DEFAULT_MIN_PROFILE_MATCH
+    max_proposals: int | None = None
 
 
 def evaluate_project_file(
