@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from openfreela.ai_request_logger import AIRequestLog, AIRequestLogger
+from openfreela.http_client_errors import (
+    http_error_reason,
+    load_response_json,
+    read_http_error_body,
+    trim_error_body,
+)
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
@@ -41,7 +47,7 @@ class OpenAIClient:
                 self.timeout_seconds,
             )
             content = response_message_content(response)
-        except Exception as error:
+        except (ConnectionError, ValueError) as error:
             self.log_request(prompt, "", started_at, "error", str(error))
             raise
         self.log_request(prompt, content, started_at, "ok", "")
@@ -109,16 +115,74 @@ def post_openai_json(
     )
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
-            decoded = json.loads(response.read().decode("utf-8"))
+            decoded = load_response_json(response.read(), "OpenAI response", url)
     except TimeoutError as error:
         message = (
             f"OpenAI timed out after {timeout_seconds}s while evaluating a project."
         )
         raise ConnectionError(message) from error
+    except HTTPError as error:
+        raise ConnectionError(openai_http_error_message(error)) from error
     except URLError as error:
-        message = f"Could not reach OpenAI at {url}; expected a reachable OpenAI API."
+        message = f"Could not reach OpenAI at {url}: {error.reason!r}."
         raise ConnectionError(message) from error
     return object_json(decoded, "OpenAI response")
+
+
+def openai_http_error_message(error: HTTPError) -> str:
+    """Return an actionable OpenAI HTTP error message.
+
+    Example:
+        message = openai_http_error_message(error)
+    """
+    body = read_http_error_body(error)
+    detail = openai_error_detail(body)
+    if not detail:
+        detail = (
+            f"Response body: {trim_error_body(body)}" if body else "No response body."
+        )
+    return (
+        f"OpenAI request failed with HTTP {error.code} "
+        f"{http_error_reason(error)}: {detail}"
+    )
+
+
+def openai_error_detail(body: str) -> str:
+    """Return OpenAI's structured error detail when present.
+
+    Example:
+        detail = openai_error_detail('{"error": {"message": "bad"}}')
+    """
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return ""
+    parts = openai_error_parts(error)
+    return " ".join(parts)
+
+
+def openai_error_parts(error: dict[object, object]) -> list[str]:
+    """Return readable OpenAI error parts.
+
+    Example:
+        parts = openai_error_parts({"message": "bad", "type": "invalid_request"})
+    """
+    parts: list[str] = []
+    message = error.get("message")
+    if isinstance(message, str) and message:
+        parts.append(message)
+    error_type = error.get("type")
+    if isinstance(error_type, str) and error_type:
+        parts.append(f"type={error_type}")
+    code = error.get("code")
+    if isinstance(code, str) and code:
+        parts.append(f"code={code}")
+    return parts
 
 
 def response_message_content(response: dict[str, object]) -> str:

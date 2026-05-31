@@ -3,13 +3,19 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from openfreela.ai_request_logger import (
     AIRequestLog,
     AIRequestLogger,
     safe_metric_dict,
+)
+from openfreela.http_client_errors import (
+    http_error_reason,
+    load_response_json,
+    read_http_error_body,
+    trim_error_body,
 )
 
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
@@ -49,7 +55,7 @@ class OllamaClient:
                 self.chat_url(), self.request_payload(prompt), self.timeout_seconds
             )
             content = response_message_content(response)
-        except Exception as error:
+        except (ConnectionError, ValueError) as error:
             self.log_request(prompt, "", started_at, "error", str(error), {})
             raise
         metrics = safe_metric_dict(response, OLLAMA_METRIC_KEYS)
@@ -119,16 +125,55 @@ def post_json(
     request = Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
-            decoded = json.loads(response.read().decode("utf-8"))
+            decoded = load_response_json(response.read(), "Ollama response", url)
     except TimeoutError as error:
         message = (
             f"Ollama timed out after {timeout_seconds}s while evaluating a project."
         )
         raise ConnectionError(message) from error
+    except HTTPError as error:
+        raise ConnectionError(ollama_http_error_message(error)) from error
     except URLError as error:
-        message = f"Could not reach Ollama at {url}; expected a running Ollama server."
+        message = (
+            f"Could not reach Ollama at {url}: {error.reason!r}. "
+            "Expected a running Ollama server."
+        )
         raise ConnectionError(message) from error
     return object_json(decoded, "Ollama response")
+
+
+def ollama_http_error_message(error: HTTPError) -> str:
+    """Return an actionable Ollama HTTP error message.
+
+    Example:
+        message = ollama_http_error_message(error)
+    """
+    body = read_http_error_body(error)
+    detail = ollama_error_detail(body)
+    if not detail:
+        detail = (
+            f"Response body: {trim_error_body(body)}" if body else "No response body."
+        )
+    return (
+        f"Ollama request failed with HTTP {error.code} "
+        f"{http_error_reason(error)}: {detail}"
+    )
+
+
+def ollama_error_detail(body: str) -> str:
+    """Return Ollama's structured error detail when present.
+
+    Example:
+        detail = ollama_error_detail('{"error": "model not found"}')
+    """
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    error = payload.get("error")
+    return error if isinstance(error, str) else ""
 
 
 def response_message_content(response: dict[str, object]) -> str:

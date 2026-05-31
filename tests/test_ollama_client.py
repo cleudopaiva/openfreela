@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+from email.message import Message
+from io import BytesIO
 from typing import TYPE_CHECKING
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -98,3 +101,59 @@ def test_ollama_client_logs_safe_request_metadata(
     assert saved["prompt_chars"] == 11
     assert saved["response_chars"] == 12
     assert saved["metrics"]["eval_count"] == 12
+
+
+def test_post_json_reports_ollama_http_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_with_http_error(request: Request, *, timeout: int) -> object:
+        raise HTTPError(
+            request.full_url,
+            404,
+            "Not Found",
+            Message(),
+            BytesIO(b'{"error": "model qwen not found"}'),
+        )
+
+    monkeypatch.setattr(ollama_client, "urlopen", fail_with_http_error)
+
+    with pytest.raises(ConnectionError) as error:
+        post_json("http://localhost:11434/api/chat", {}, 12)
+
+    message = str(error.value)
+    assert "Ollama request failed with HTTP 404 Not Found" in message
+    assert "model qwen not found" in message
+
+
+def test_post_json_reports_ollama_transport_error_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_with_url_error(request: Request, *, timeout: int) -> object:
+        raise URLError("connection refused")
+
+    monkeypatch.setattr(ollama_client, "urlopen", fail_with_url_error)
+
+    with pytest.raises(ConnectionError, match="connection refused"):
+        post_json("http://localhost:11434/api/chat", {}, 12)
+
+
+def test_post_json_reports_invalid_ollama_success_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class InvalidJSONResponse:
+        def __enter__(self) -> InvalidJSONResponse:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+            pass
+
+        def read(self) -> bytes:
+            return b"not json"
+
+    def fake_urlopen(request: Request, *, timeout: int) -> InvalidJSONResponse:
+        return InvalidJSONResponse()
+
+    monkeypatch.setattr(ollama_client, "urlopen", fake_urlopen)
+
+    with pytest.raises(ValueError, match="Invalid Ollama response from"):
+        post_json("http://localhost:11434/api/chat", {}, 12)
