@@ -23,7 +23,6 @@ from openfreela.freelas99_scraper import (
 from openfreela.project_evaluator import (
     DEFAULT_CV_PATH,
     DEFAULT_EVALUATIONS_PATH,
-    DEFAULT_MIN_PROFILE_MATCH,
     DEFAULT_NOTIFIED_PROJECTS_PATH,
     DEFAULT_PROMPT_PATH,
     EvaluationRunConfig,
@@ -71,7 +70,7 @@ class EvaluateOptions:
     Example:
         options = EvaluateOptions(
             Path("projects.json"), Path("cv.md"), Path("prompt.md"),
-            Path("out.json"), Path("notified.json"), 75, 30
+            Path("out.json"), Path("notified.json"), 30
         )
     """
 
@@ -80,7 +79,6 @@ class EvaluateOptions:
     prompt_path: Path
     output_path: Path
     notified_path: Path
-    min_profile_match: int
     max_proposals: int | None
     ai_provider: str
     ai_verbose: bool
@@ -176,7 +174,6 @@ def add_evaluate_parser(
     parser.add_argument("--prompt", default=str(DEFAULT_PROMPT_PATH))
     parser.add_argument("--output", default=str(DEFAULT_EVALUATIONS_PATH))
     parser.add_argument("--notified", default=str(DEFAULT_NOTIFIED_PROJECTS_PATH))
-    parser.add_argument("--min-score", type=int, default=env_min_profile_match())
     parser.add_argument("--max-proposals", type=int, default=env_max_proposals())
     add_ai_arguments(parser)
 
@@ -260,7 +257,6 @@ def evaluate_options(namespace: argparse.Namespace) -> EvaluateOptions:
         prompt_path=Path(str(namespace.prompt)),
         output_path=Path(str(namespace.output)),
         notified_path=Path(str(namespace.notified)),
-        min_profile_match=int(namespace.min_score),
         max_proposals=optional_non_negative_int(
             namespace.max_proposals, "--max-proposals"
         ),
@@ -346,7 +342,6 @@ def evaluation_config(options: EvaluateOptions) -> EvaluationRunConfig:
         options.prompt_path,
         options.output_path,
         options.notified_path,
-        options.min_profile_match,
         options.max_proposals,
     )
 
@@ -385,18 +380,6 @@ def required_env(name: str) -> str:
     raise RuntimeError(
         f"Missing environment variable {name}; expected a non-empty value."
     )
-
-
-def env_min_profile_match() -> int:
-    """Return the default profile match threshold from the environment.
-
-    Example:
-        score = env_min_profile_match()
-    """
-    value = os.environ.get("OPENFREELA_MIN_PROFILE_MATCH")
-    if value is None:
-        return DEFAULT_MIN_PROFILE_MATCH
-    return int(value)
 
 
 def env_max_proposals() -> int | None:

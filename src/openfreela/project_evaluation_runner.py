@@ -164,7 +164,7 @@ def notify_successful_evaluation(
     Example:
         notify_successful_evaluation(evaluation, config, set(), notifier)
     """
-    if not should_notify(evaluation, config.min_profile_match, notified_urls):
+    if not should_notify(evaluation, notified_urls):
         return
     try:
         notifier.send_message(notification_message(evaluation))

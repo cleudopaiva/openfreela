@@ -10,7 +10,6 @@ DEFAULT_CV_PATH = Path("profile/cv.md")
 DEFAULT_PROMPT_PATH = Path("prompts/project-fit.md")
 DEFAULT_EVALUATIONS_PATH = Path("data/99freelas-project-evaluations.json")
 DEFAULT_NOTIFIED_PROJECTS_PATH = Path("data/notified-projects.json")
-DEFAULT_MIN_PROFILE_MATCH = 75
 
 
 class ProjectJudge(Protocol):
@@ -82,12 +81,12 @@ class ProjectEvaluation:
 
 @dataclass(frozen=True)
 class EvaluationRunConfig:
-    """File paths and threshold for a project evaluation run.
+    """File paths and filters for a project evaluation run.
 
     Example:
         config = EvaluationRunConfig(
             Path("projects.json"), Path("cv.md"), Path("prompt.md"),
-            Path("out.json"), Path("notified.json"), 75, 30
+            Path("out.json"), Path("notified.json"), 30
         )
     """
 
@@ -96,7 +95,6 @@ class EvaluationRunConfig:
     prompt_path: Path
     output_path: Path
     notified_path: Path
-    min_profile_match: int = DEFAULT_MIN_PROFILE_MATCH
     max_proposals: int | None = None
 
 
@@ -170,17 +168,15 @@ def load_json_object(content: str) -> object:
 
 def should_notify(
     evaluation: ProjectEvaluation,
-    min_profile_match: int,
     notified_urls: set[str],
 ) -> bool:
     """Return whether an evaluation should trigger a notification.
 
     Example:
-        ok = should_notify(evaluation, 75, set())
+        ok = should_notify(evaluation, set())
     """
     return (
-        evaluation.profile_match_score >= min_profile_match
-        and evaluation.recommendation == "apply"
+        evaluation.recommendation == "apply"
         and evaluation.project_url not in notified_urls
     )
 

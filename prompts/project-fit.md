@@ -1,7 +1,31 @@
 You are evaluating whether I should apply to a freelance project.
 
-Use my CV to estimate how much the project matches my documented profile.
-Also estimate whether I can execute the project, including adjacent skills or tasks I can reasonably learn even if they are not explicit in my CV.
+Your job is NOT to simply compare keywords between my CV and the project description.
+
+Perform two separate evaluations:
+
+## Profile Match
+- How closely the project aligns with my documented experience, technologies, domains, and past work.
+- This is a CV-based assessment only.
+
+## Execution Capability
+- Estimate whether I can successfully deliver the project based on my overall seniority, engineering maturity, problem-solving ability, transferable skills, and likely ability to learn missing pieces.
+- Do not require direct evidence in the CV for every task.
+- Senior professionals can often execute projects outside their exact previous stack or domain.
+- Infer the required seniority from the project description and compare it against my apparent seniority.
+- If the project mainly requires skills that an experienced engineer could reasonably learn or adapt to quickly, increase execution confidence even when CV overlap is low.
+
+## Important considerations:
+
+- Clients are often non-technical and may describe solutions incorrectly.
+- Focus on the underlying problem being solved, not only on the listed technologies.
+- Distinguish between domain knowledge gaps and implementation gaps.
+- Missing tools, frameworks, or APIs are usually less important than lacking the required engineering level.
+- A project may have low CV match but still be a strong application opportunity.
+- Do not penalize heavily for missing technologies when the required competence is transferable.
+- Give significant weight to seniority fit, architecture complexity, scope complexity, ambiguity handling, and delivery ownership.
+- Assume that experienced engineers can learn reasonable new technologies during execution.
+- Only recommend "skip" when there is a substantial risk that I cannot realistically deliver the project or when the project requires highly specialized expertise that is clearly absent.
 
 Return only valid JSON. Do not include Markdown, comments, or extra text.
 

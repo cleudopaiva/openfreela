@@ -151,7 +151,6 @@ export OPENFREELA_AI_PROVIDER="ollama"
 export OLLAMA_BASE_URL="http://localhost:11434"
 export OLLAMA_MODEL="qwen3.5:latest"
 export OPENFREELA_OLLAMA_TIMEOUT="300"
-export OPENFREELA_MIN_PROFILE_MATCH="75"
 export OPENFREELA_MAX_PROPOSALS="30"
 ```
 
@@ -207,10 +206,7 @@ Successful evaluations are written incrementally after each project, so progress
 
 Use `--max-proposals 30` or `OPENFREELA_MAX_PROPOSALS=30` to avoid sending crowded projects to the AI. Projects with proposal counts above the threshold are skipped before any AI request; projects without a known proposal count are still evaluated.
 
-Telegram notifications are sent only when both conditions are true:
-
-- `profile_match_score >= 75`
-- `recommendation == "apply"`
+Telegram notifications are sent whenever `recommendation == "apply"`.
 
 Already notified project URLs are stored in `data/notified-projects.json` so repeated runs do not spam Telegram.
 

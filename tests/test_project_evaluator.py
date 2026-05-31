@@ -163,12 +163,13 @@ def test_parse_project_evaluation_rejects_invalid_recommendation() -> None:
         parse_project_evaluation(json.dumps(payload), project_payload())
 
 
-def test_should_notify_requires_score_apply_and_new_url() -> None:
-    evaluation = parse_project_evaluation(json.dumps(ai_payload()), project_payload())
+def test_should_notify_requires_apply_and_new_url() -> None:
+    evaluation = parse_project_evaluation(
+        json.dumps(ai_payload(profile_score=10)), project_payload()
+    )
 
-    assert should_notify(evaluation, 75, set())
-    assert not should_notify(evaluation, 85, set())
-    assert not should_notify(evaluation, 75, {evaluation.project_url})
+    assert should_notify(evaluation, set())
+    assert not should_notify(evaluation, {evaluation.project_url})
 
 
 def test_should_notify_rejects_non_apply_recommendation() -> None:
@@ -176,7 +177,7 @@ def test_should_notify_rejects_non_apply_recommendation() -> None:
         json.dumps(ai_payload(recommendation="maybe")), project_payload()
     )
 
-    assert not should_notify(evaluation, 75, set())
+    assert not should_notify(evaluation, set())
 
 
 def test_notification_message_includes_both_scores() -> None:
@@ -299,7 +300,6 @@ def write_evaluation_inputs(
         prompt_path,
         output_path,
         notified_path,
-        75,
         max_proposals,
     )
 
