@@ -161,7 +161,6 @@ To use OpenAI instead:
 export OPENFREELA_AI_PROVIDER="openai"
 export OPENAI_API_KEY="your-openai-api-key"
 export OPENAI_MODEL="gpt-4o-mini"
-export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENFREELA_OPENAI_TIMEOUT="300"
 ```
 

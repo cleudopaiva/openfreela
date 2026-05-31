@@ -73,7 +73,7 @@ def openai_client_from_env(logger: SafeAIRequestLogger, verbose: bool) -> OpenAI
     Example:
         client = openai_client_from_env(logger, False)
     """
-    base_url = os.environ.get("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL)
+    base_url = DEFAULT_OPENAI_BASE_URL
     model = os.environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
     api_key = required_env("OPENAI_API_KEY")
     timeout = env_int("OPENFREELA_OPENAI_TIMEOUT", 300)

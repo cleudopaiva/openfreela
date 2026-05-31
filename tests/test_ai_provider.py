@@ -6,7 +6,7 @@ import pytest
 
 from openfreela.ai_provider import AIProviderOptions, ai_client_from_options
 from openfreela.ollama_client import OllamaClient
-from openfreela.openai_client import OpenAIClient
+from openfreela.openai_client import DEFAULT_OPENAI_BASE_URL, OpenAIClient
 
 
 def test_ai_client_from_options_defaults_to_ollama(
@@ -26,11 +26,13 @@ def test_ai_client_from_options_builds_openai_client(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "token")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://example.invalid/v1")
 
     client = ai_client_from_options(AIProviderOptions("openai"))
 
     assert isinstance(client, OpenAIClient)
     assert client.model == "gpt-4o-mini"
+    assert client.base_url == DEFAULT_OPENAI_BASE_URL
 
 
 def test_ai_client_from_options_requires_openai_api_key(
