@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from openfreela import cli
+from openfreela.browser.session import LOGIN_URL as FREELAS99_LOGIN_URL
 from openfreela.evaluation.evaluator import (
     DEFAULT_CV_PATH,
     DEFAULT_EVALUATIONS_PATH,
@@ -13,7 +14,8 @@ from openfreela.evaluation.evaluator import (
     DEFAULT_PROMPT_PATH,
     ProjectEvaluation,
 )
-from openfreela.freelas99.scraper import FreelanceProject
+from openfreela.projects.model import FreelanceProject
+from openfreela.sources.workana.scraper import LOGIN_URL as WORKANA_LOGIN_URL
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -23,13 +25,33 @@ if TYPE_CHECKING:
 def test_main_runs_login_command(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    calls: list[Path] = []
+    calls: list[tuple[Path, str]] = []
     session_path = tmp_path / "session.json"
-    monkeypatch.setattr(cli, "save_manual_login_session", calls.append)
+    monkeypatch.setattr(
+        cli,
+        "save_manual_login_session",
+        lambda path, url: calls.append((path, url)),
+    )
 
     cli.main(["login-99freelas", "--session", str(session_path)])
 
-    assert calls == [session_path]
+    assert calls == [(session_path, FREELAS99_LOGIN_URL)]
+
+
+def test_main_runs_workana_login_command(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[tuple[Path, str]] = []
+    session_path = tmp_path / "workana.json"
+    monkeypatch.setattr(
+        cli,
+        "save_manual_login_session",
+        lambda path, url: calls.append((path, url)),
+    )
+
+    cli.main(["login-workana", "--session", str(session_path)])
+
+    assert calls == [(session_path, WORKANA_LOGIN_URL)]
 
 
 def test_main_runs_scrape_command_and_saves_json(
@@ -47,7 +69,7 @@ def test_main_runs_scrape_command_and_saves_json(
         assert headless
         return [project]
 
-    monkeypatch.setattr(cli, "scrape_projects_pages", scrape_projects)
+    monkeypatch.setattr(cli, "scrape_99freelas_pages", scrape_projects)
 
     cli.main(
         [
@@ -63,8 +85,40 @@ def test_main_runs_scrape_command_and_saves_json(
     assert json.loads(output_path.read_text()) == [project.to_dict()]
 
 
+def test_main_runs_workana_scrape_command(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "workana-projects.json"
+    session_path = tmp_path / "workana.json"
+    project = FreelanceProject(
+        "Title", "Desc", None, (), "url", None, None, None, None, None, "raw", "workana"
+    )
+
+    def scrape_projects(path: Path, *, headless: bool = True) -> list[FreelanceProject]:
+        assert path == session_path
+        assert headless
+        return [project]
+
+    monkeypatch.setattr(cli, "scrape_workana_pages", scrape_projects)
+
+    cli.main(
+        [
+            "scrape-workana",
+            "--session",
+            str(session_path),
+            "--output",
+            str(output_path),
+            "--headless",
+        ]
+    )
+
+    assert json.loads(output_path.read_text()) == [project.to_dict()]
+
+
 def test_main_exits_with_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail_login(path: Path) -> None:
+    def fail_login(path: Path, login_url: str) -> None:
+        del login_url
         raise FileNotFoundError(f"missing {path}")
 
     monkeypatch.setattr(cli, "save_manual_login_session", fail_login)

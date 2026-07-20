@@ -10,14 +10,14 @@ LOGIN_URL = "https://www.99freelas.com.br/login"
 DEFAULT_SESSION_PATH = Path(".auth/99freelas.json")
 
 
-def save_manual_login_session(session_path: Path) -> None:
-    """Save a manual 99freelas login session for later scraper runs.
+def save_manual_login_session(session_path: Path, login_url: str = LOGIN_URL) -> None:
+    """Save a manual login session for later scraper runs.
 
     Example:
-        save_manual_login_session(Path(".auth/99freelas.json"))
+        save_manual_login_session(Path(".auth/site.json"), "https://example.com")
     """
     session_path.parent.mkdir(parents=True, exist_ok=True)
-    cdp_browser = launch_cdp_browser(LOGIN_URL)
+    cdp_browser = launch_cdp_browser(login_url)
     try:
         save_connected_playwright_session(cdp_browser.get_endpoint_url(), session_path)
     finally:

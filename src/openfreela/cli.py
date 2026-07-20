@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from openfreela.ai.provider import (
     AI_PROVIDERS,
@@ -13,7 +13,13 @@ from openfreela.ai.provider import (
     AIProviderOptions,
     ai_client_from_options,
 )
-from openfreela.browser.session import DEFAULT_SESSION_PATH, save_manual_login_session
+from openfreela.browser.session import (
+    DEFAULT_SESSION_PATH,
+    save_manual_login_session,
+)
+from openfreela.browser.session import (
+    LOGIN_URL as FREELAS99_LOGIN_URL,
+)
 from openfreela.config.env_file import load_dotenv
 from openfreela.evaluation.evaluator import (
     DEFAULT_CV_PATH,
@@ -24,17 +30,24 @@ from openfreela.evaluation.evaluator import (
     evaluate_project_file,
     load_json_object,
 )
-from openfreela.freelas99.scraper import (
-    FreelanceProject,
-    SessionExpiredError,
-    scrape_projects_pages,
-)
 from openfreela.notifications.telegram import TelegramNotifier
+from openfreela.sources.freelas99.scraper import SessionExpiredError
+from openfreela.sources.freelas99.scraper import (
+    scrape_projects_pages as scrape_99freelas_pages,
+)
+from openfreela.sources.workana.scraper import LOGIN_URL as WORKANA_LOGIN_URL
+from openfreela.sources.workana.scraper import (
+    scrape_projects_pages as scrape_workana_pages,
+)
 
 DEFAULT_PROJECTS_OUTPUT_PATH = Path("data/99freelas-projects.json")
+DEFAULT_WORKANA_SESSION_PATH = Path(".auth/workana.json")
+DEFAULT_WORKANA_OUTPUT_PATH = Path("data/workana-projects.json")
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from openfreela.projects.model import FreelanceProject
 
 
 @dataclass(frozen=True)
@@ -42,10 +55,23 @@ class LoginOptions:
     """Options for saving a manual login session.
 
     Example:
-        options = LoginOptions(Path(".auth/99freelas.json"))
+        options = LoginOptions(
+            Path(".auth/99freelas.json"), "https://example.com", "example"
+        )
     """
 
     session_path: Path
+    login_url: str
+    source_name: str
+
+
+class ProjectScraper(Protocol):
+    """Callable project scraper used by source-specific CLI commands."""
+
+    def __call__(
+        self, session_path: Path, *, headless: bool = True
+    ) -> list[FreelanceProject]:
+        """Scrape projects from one freelance source."""
 
 
 @dataclass(frozen=True)
@@ -131,7 +157,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="openfreela")
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_login_parser(subparsers)
+    add_workana_login_parser(subparsers)
     add_scrape_parser(subparsers)
+    add_workana_scrape_parser(subparsers)
     add_evaluate_parser(subparsers)
     add_test_ai_parser(subparsers)
     return parser
@@ -149,6 +177,14 @@ def add_login_parser(
     parser.add_argument("--session", default=str(DEFAULT_SESSION_PATH))
 
 
+def add_workana_login_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register the manual Workana login command."""
+    parser = subparsers.add_parser("login-workana")
+    parser.add_argument("--session", default=str(DEFAULT_WORKANA_SESSION_PATH))
+
+
 def add_scrape_parser(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -160,6 +196,16 @@ def add_scrape_parser(
     parser = subparsers.add_parser("scrape-99freelas")
     parser.add_argument("--session", default=str(DEFAULT_SESSION_PATH))
     parser.add_argument("--output", default=str(DEFAULT_PROJECTS_OUTPUT_PATH))
+    parser.add_argument("--headless", action="store_true")
+
+
+def add_workana_scrape_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register the Workana project scraper command."""
+    parser = subparsers.add_parser("scrape-workana")
+    parser.add_argument("--session", default=str(DEFAULT_WORKANA_SESSION_PATH))
+    parser.add_argument("--output", default=str(DEFAULT_WORKANA_OUTPUT_PATH))
     parser.add_argument("--headless", action="store_true")
 
 
@@ -215,10 +261,16 @@ def run_command(namespace: argparse.Namespace) -> None:
     """
     command = str(namespace.command)
     if command == "login-99freelas":
-        run_login(login_options(namespace))
+        run_login(login_options(namespace, FREELAS99_LOGIN_URL, "99freelas"))
+        return
+    if command == "login-workana":
+        run_login(login_options(namespace, WORKANA_LOGIN_URL, "Workana"))
         return
     if command == "scrape-99freelas":
-        run_scrape(scrape_options(namespace))
+        run_scrape(scrape_options(namespace), scrape_99freelas_pages)
+        return
+    if command == "scrape-workana":
+        run_scrape(scrape_options(namespace), scrape_workana_pages)
         return
     if command == "evaluate-projects":
         run_evaluate(evaluate_options(namespace))
@@ -227,13 +279,19 @@ def run_command(namespace: argparse.Namespace) -> None:
         run_test_ai(test_ai_options(namespace))
 
 
-def login_options(namespace: argparse.Namespace) -> LoginOptions:
+def login_options(
+    namespace: argparse.Namespace, login_url: str, source_name: str
+) -> LoginOptions:
     """Convert parsed login arguments into typed options.
 
     Example:
         options = login_options(parser.parse_args(["login-99freelas"]))
     """
-    return LoginOptions(session_path=Path(str(namespace.session)))
+    return LoginOptions(
+        session_path=Path(str(namespace.session)),
+        login_url=login_url,
+        source_name=source_name,
+    )
 
 
 def scrape_options(namespace: argparse.Namespace) -> ScrapeOptions:
@@ -291,11 +349,14 @@ def run_login(options: LoginOptions) -> None:
     Example:
         run_login(LoginOptions(Path(".auth/99freelas.json")))
     """
-    save_manual_login_session(options.session_path)
-    print(f"Saved 99freelas session to {options.session_path}")
+    save_manual_login_session(options.session_path, options.login_url)
+    print(f"Saved {options.source_name} session to {options.session_path}")
 
 
-def run_scrape(options: ScrapeOptions) -> None:
+def run_scrape(
+    options: ScrapeOptions,
+    scrape_projects: ProjectScraper,
+) -> None:
     """Scrape projects and write the local JSON output file.
 
     Example:
@@ -303,7 +364,7 @@ def run_scrape(options: ScrapeOptions) -> None:
             ScrapeOptions(Path(".auth/session.json"), Path("data/out.json"), True)
         )
     """
-    projects = scrape_projects_pages(options.session_path, headless=options.headless)
+    projects = scrape_projects(options.session_path, headless=options.headless)
     save_projects(options.output_path, projects)
     print(f"Saved {len(projects)} projects to {options.output_path}")
 

@@ -1,15 +1,16 @@
 # OpenFreela
 
-OpenFreela helps collect freelance project listings from 99freelas, evaluate them with a local AI model, and notify you about the best opportunities.
+OpenFreela helps collect freelance project listings from 99freelas and Workana, evaluate them with a local AI model, and notify you about the best opportunities.
 
-The current implementation focuses on 99freelas projects in the software development category. It opens a real Chromium browser through SeleniumBase CDP mode, lets you log in manually when needed, and then uses Playwright over CDP to scrape project data into a local JSON file.
+The current implementation focuses on software development categories. It opens a real Chromium browser through SeleniumBase CDP mode, lets you log in manually when needed, and then uses Playwright over CDP to scrape project data into a local JSON file.
 
 ## What It Does
 
-- Opens the 99freelas login page for manual authentication.
+- Opens source login pages for manual authentication.
 - Saves the authenticated browser session locally.
 - Reuses that session for future scraping runs.
 - Scrapes software, web, mobile, and development projects from 99freelas.
+- Scrapes IT and programming projects from Workana.
 - Follows pagination automatically until the last page.
 - Saves structured project data as JSON.
 - Captures expanded project descriptions from the page HTML, including content hidden behind `Expandir`.
@@ -36,12 +37,13 @@ uv run playwright install chromium
 
 ## Login Flow
 
-99freelas may show captcha during login. OpenFreela does not try to bypass captcha automatically. You log in manually in the browser window.
+99freelas or Workana may show captcha during login. OpenFreela does not try to bypass captcha automatically. You log in manually in the browser window.
 
 Run:
 
 ```bash
 uv run openfreela login-99freelas
+uv run openfreela login-workana
 ```
 
 Then:
@@ -51,15 +53,16 @@ Then:
 3. Return to the terminal.
 4. Press Enter to save the session.
 
-The session is saved to:
+Sessions are saved to:
 
 ```text
 .auth/99freelas.json
+.auth/workana.json
 ```
 
 This file is ignored by Git because it contains local authentication state.
 
-If the session expires, run `login-99freelas` again.
+If a session expires, run the matching login command again.
 
 ## Scraping Projects
 
@@ -67,12 +70,19 @@ Run:
 
 ```bash
 uv run openfreela scrape-99freelas
+uv run openfreela scrape-workana
 ```
 
 The scraper uses this 99freelas category page:
 
 ```text
 https://www.99freelas.com.br/projects?categoria=web-mobile-e-software
+```
+
+The Workana scraper uses this category page:
+
+```text
+https://www.workana.com/pt/jobs?category=it-programming
 ```
 
 It detects the last page from the pagination button named `Última`, using its `data-page` value, then visits every page using the `page` query parameter.
@@ -87,6 +97,7 @@ The output is saved to:
 
 ```text
 data/99freelas-projects.json
+data/workana-projects.json
 ```
 
 The `data/` directory is ignored by Git because it contains local scrape results.
@@ -99,6 +110,7 @@ To run in headless mode:
 
 ```bash
 uv run openfreela scrape-99freelas --headless
+uv run openfreela scrape-workana --headless
 ```
 
 Use this only after confirming the normal headed flow works.
@@ -165,6 +177,7 @@ Evaluate scraped projects:
 
 ```bash
 uv run openfreela evaluate-projects --ai-model qwen3.5:latest
+uv run openfreela evaluate-projects --projects data/workana-projects.json --output data/workana-project-evaluations.json --ai-model qwen3.5:latest
 uv run openfreela evaluate-projects --ai-provider openai --ai-model gpt-4o-mini
 uv run openfreela evaluate-projects --ai-provider ollama --ai-model qwen3.5:latest --ai-verbose
 uv run openfreela evaluate-projects --ai-model qwen3.5:latest --max-proposals 30
@@ -182,6 +195,7 @@ The evaluator reads:
 
 ```text
 data/99freelas-projects.json
+data/workana-projects.json when provided with `--projects`
 profile/cv.md
 prompts/project-fit.md
 ```
@@ -190,6 +204,7 @@ It writes:
 
 ```text
 data/99freelas-project-evaluations.json
+data/workana-project-evaluations.json when provided with `--output`
 data/notified-projects.json
 ```
 
@@ -208,6 +223,7 @@ Each AI evaluation has fields like:
 ```json
 {
   "project_url": "https://www.99freelas.com.br/project/example-123?fs=t",
+  "source": "99freelas",
   "title": "Atualização site de WIX para WordPress",
   "profile_match_score": 82,
   "execution_confidence_score": 68,
@@ -291,7 +307,6 @@ The workflow checks:
 
 ## Current Limitations
 
-- Only 99freelas is supported.
 - Login is manual.
 - Captcha solving is manual.
 - AI evaluation depends on a local Ollama server.

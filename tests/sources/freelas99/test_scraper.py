@@ -6,10 +6,10 @@ import pytest
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from openfreela.freelas99 import scraper as freelas99_scraper
-from openfreela.freelas99.html import ParsedProjectItem
-from openfreela.freelas99.scraper import (
-    FreelanceProject,
+from openfreela.projects.model import FreelanceProject
+from openfreela.sources.freelas99 import scraper as freelas99_scraper
+from openfreela.sources.freelas99.html import ParsedProjectItem
+from openfreela.sources.freelas99.scraper import (
     SessionExpiredError,
     absolute_project_url,
     browser_context_with_session,
@@ -249,6 +249,7 @@ def test_parse_project_card_text_extracts_visible_fields() -> None:
     assert project.proposals is None
     assert project.interested is None
     assert project.level is None
+    assert project.source == "99freelas"
     assert "Preciso de uma API" in project.description
 
 
@@ -490,6 +491,7 @@ def test_project_from_parsed_item_normalizes_project_url() -> None:
     assert project.proposals == 10
     assert project.interested == 13
     assert project.level == "Intermediário"
+    assert project.source == "99freelas"
 
 
 def test_nearest_project_text_prefers_long_ancestor_text() -> None:

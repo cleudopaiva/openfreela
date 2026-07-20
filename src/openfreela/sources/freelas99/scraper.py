@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
@@ -10,8 +9,10 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from openfreela.browser.cdp import launch_cdp_browser
-from openfreela.freelas99.html import ParsedProjectItem, parse_result_item_html
+from openfreela.projects.model import FreelanceProject
+from openfreela.sources.freelas99.html import ParsedProjectItem, parse_result_item_html
 
+SOURCE = "99freelas"
 PROJECTS_URL = "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software"
 PROJECT_LINK_SELECTOR = (
     "li.result-item h1.title a[href*='/project/'], "
@@ -32,49 +33,6 @@ if TYPE_CHECKING:
 
 class SessionExpiredError(RuntimeError):
     """Raised when the saved 99freelas session no longer opens projects."""
-
-
-@dataclass(frozen=True)
-class FreelanceProject:
-    """A project extracted from the 99freelas project listing.
-
-    Example:
-        project = FreelanceProject(
-            "API", "Build API", None, (), None, None, None, None, None, None, "API"
-        )
-    """
-
-    title: str
-    description: str
-    budget: str | None
-    skills: tuple[str, ...]
-    project_url: str | None
-    posted_at: str | None
-    remaining_time: str | None
-    proposals: int | None
-    interested: int | None
-    level: str | None
-    raw_text: str
-
-    def to_dict(self) -> dict[str, str | int | list[str] | None]:
-        """Return a JSON-serializable project dictionary.
-
-        Example:
-            payload = project.to_dict()
-        """
-        return {
-            "title": self.title,
-            "description": self.description,
-            "budget": self.budget,
-            "skills": list(self.skills),
-            "project_url": self.project_url,
-            "posted_at": self.posted_at,
-            "remaining_time": self.remaining_time,
-            "proposals": self.proposals,
-            "interested": self.interested,
-            "level": self.level,
-            "raw_text": self.raw_text,
-        }
 
 
 def scrape_projects_pages(
@@ -160,7 +118,7 @@ def last_projects_page(page: Page) -> int:
         if locator.count() == 0:
             return 1
         value = locator.first.get_attribute("data-page", timeout=1_000)
-    except PlaywrightError, PlaywrightTimeoutError:
+    except (PlaywrightError, PlaywrightTimeoutError):
         return 1
     return positive_int_or_default(value, 1)
 
@@ -314,6 +272,7 @@ def project_from_link(link: Locator) -> FreelanceProject:
         project.interested,
         project.level,
         raw_text,
+        SOURCE,
     )
 
 
@@ -347,6 +306,7 @@ def project_from_parsed_item(item: ParsedProjectItem) -> FreelanceProject:
         item.interested,
         item.level,
         item.raw_text,
+        SOURCE,
     )
 
 
@@ -436,6 +396,7 @@ def parse_project_card_text(raw_text: str, project_url: str | None) -> Freelance
         None,
         None,
         clean_text(raw_text),
+        SOURCE,
     )
 
 

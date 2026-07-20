@@ -60,7 +60,17 @@ def test_save_manual_login_session_stops_cdp_browser(
     cdp_browser = FakeCdpBrowser()
     endpoints: list[tuple[str, Path]] = []
 
-    monkeypatch.setattr(browser_session, "launch_cdp_browser", lambda url: cdp_browser)
+    opened_urls: list[str] = []
+
+    def launch_browser(url: str) -> FakeCdpBrowser:
+        opened_urls.append(url)
+        return cdp_browser
+
+    monkeypatch.setattr(
+        browser_session,
+        "launch_cdp_browser",
+        launch_browser,
+    )
     monkeypatch.setattr(
         browser_session,
         "save_connected_playwright_session",
@@ -68,9 +78,10 @@ def test_save_manual_login_session_stops_cdp_browser(
     )
 
     session_path = tmp_path / ".auth" / "99freelas.json"
-    browser_session.save_manual_login_session(session_path)
+    browser_session.save_manual_login_session(session_path, "https://example.com/login")
 
     assert endpoints == [("http://127.0.0.1:9222", session_path)]
+    assert opened_urls == ["https://example.com/login"]
     assert cdp_browser.driver.stopped
     assert session_path.parent.exists()
 
