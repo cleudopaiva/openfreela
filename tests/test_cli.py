@@ -100,6 +100,8 @@ def test_main_runs_evaluate_command(
             "30",
             "--ai-provider",
             "openai",
+            "--ai-model",
+            "gpt-4o-mini",
             "--ai-verbose",
             "--ai-log",
             str(tmp_path / "ai.jsonl"),
@@ -109,6 +111,7 @@ def test_main_runs_evaluate_command(
     assert calls[0].max_proposals == 30
     assert calls[0].cv_path == tmp_path / "cv.md"
     assert calls[0].ai_provider == "openai"
+    assert calls[0].ai_model == "gpt-4o-mini"
     assert calls[0].ai_verbose
     assert calls[0].ai_log_path == tmp_path / "ai.jsonl"
 
@@ -143,6 +146,7 @@ def test_run_evaluate_calls_project_evaluator(monkeypatch: pytest.MonkeyPatch) -
             DEFAULT_NOTIFIED_PROJECTS_PATH,
             30,
             "ollama",
+            "qwen3.5:latest",
             False,
             None,
         )
@@ -158,20 +162,14 @@ def test_required_env_rejects_missing_value(monkeypatch: pytest.MonkeyPatch) -> 
         cli.required_env("TELEGRAM_BOT_TOKEN")
 
 
-def test_main_loads_dotenv_before_parser_defaults(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    calls: list[cli.TestAIOptions] = []
-    dotenv_path = tmp_path / ".env"
-    dotenv_path.write_text("OPENFREELA_AI_PROVIDER=openai\n")
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("OPENFREELA_AI_PROVIDER", raising=False)
-    monkeypatch.setattr(cli, "run_test_ai", calls.append)
+def test_parser_requires_ai_model_for_ai_commands() -> None:
+    parser = cli.build_parser()
 
-    cli.main(["test-ai"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["test-ai"])
 
-    assert calls[0].ai_provider == "openai"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["evaluate-projects"])
 
 
 def test_run_test_ai_validates_provider_response(
@@ -183,7 +181,7 @@ def test_run_test_ai_validates_provider_response(
 
     monkeypatch.setattr(cli, "ai_client_from_options", lambda options: FakeJudge())
 
-    cli.run_test_ai(cli.TestAIOptions("ollama", False, None))
+    cli.run_test_ai(cli.TestAIOptions("ollama", "qwen3.5:latest", False, None))
 
 
 def test_run_test_ai_rejects_bad_response(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -194,7 +192,7 @@ def test_run_test_ai_rejects_bad_response(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(cli, "ai_client_from_options", lambda options: FakeJudge())
 
     with pytest.raises(ValueError, match="expected ok=true"):
-        cli.run_test_ai(cli.TestAIOptions("ollama", False, None))
+        cli.run_test_ai(cli.TestAIOptions("ollama", "qwen3.5:latest", False, None))
 
 
 def test_build_parser_requires_known_command() -> None:

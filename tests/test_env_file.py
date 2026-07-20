@@ -19,21 +19,20 @@ def test_load_dotenv_reads_values_without_overriding_env(
         "\n".join(
             [
                 "# comment",
-                "OPENFREELA_AI_PROVIDER=ollama",
-                "export OLLAMA_MODEL='qwen3.5:latest'",
-                'OPENAI_MODEL="gpt-4o-mini"',
+                "export OLLAMA_BASE_URL='http://localhost:11434'",
+                'TELEGRAM_CHAT_ID="chat-id"',
                 "OPENAI_API_KEY=from-file",
             ]
         )
     )
     monkeypatch.setenv("OPENAI_API_KEY", "from-shell")
-    monkeypatch.delenv("OPENFREELA_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
 
     load_dotenv(path)
 
-    assert os.environ["OPENFREELA_AI_PROVIDER"] == "ollama"
-    assert os.environ["OLLAMA_MODEL"] == "qwen3.5:latest"
-    assert os.environ["OPENAI_MODEL"] == "gpt-4o-mini"
+    assert os.environ["OLLAMA_BASE_URL"] == "http://localhost:11434"
+    assert os.environ["TELEGRAM_CHAT_ID"] == "chat-id"
     assert os.environ["OPENAI_API_KEY"] == "from-shell"
 
 

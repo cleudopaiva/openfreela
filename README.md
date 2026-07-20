@@ -123,13 +123,9 @@ prompts/project-fit.md
 
 Edit that file whenever you want to change how the AI judges projects.
 
-Copy `.env.example` to `.env` if you prefer local configuration over shell exports. Values already exported in your shell take precedence over `.env`.
+Copy `.env.example` to `.env` if you prefer local URL/key configuration over shell exports. Values already exported in your shell take precedence over `.env`.
 
-The default provider is Ollama and the default local model is:
-
-```text
-qwen3.5:latest
-```
+The default provider is Ollama, but the model is always selected with `--ai-model`.
 
 Make sure Ollama is running and the model is available:
 
@@ -144,45 +140,40 @@ export TELEGRAM_BOT_TOKEN="your-bot-token"
 export TELEGRAM_CHAT_ID="your-chat-id"
 ```
 
-Optional environment variables:
+Optional URL environment variables:
 
 ```bash
-export OPENFREELA_AI_PROVIDER="ollama"
 export OLLAMA_BASE_URL="http://localhost:11434"
-export OLLAMA_MODEL="qwen3.5:latest"
-export OPENFREELA_OLLAMA_TIMEOUT="300"
-export OPENFREELA_MAX_PROPOSALS="30"
 ```
 
 To use OpenAI instead:
 
 ```bash
-export OPENFREELA_AI_PROVIDER="openai"
 export OPENAI_API_KEY="your-openai-api-key"
-export OPENAI_MODEL="gpt-4o-mini"
-export OPENFREELA_OPENAI_TIMEOUT="300"
 ```
+
+Request timeouts are fixed defaults in the application, not runtime configuration.
 
 Check the configured AI provider before evaluating real projects:
 
 ```bash
-uv run openfreela test-ai --ai-provider ollama --ai-verbose
-uv run openfreela test-ai --ai-provider openai
+uv run openfreela test-ai --ai-provider ollama --ai-model qwen3.5:latest --ai-verbose
+uv run openfreela test-ai --ai-provider openai --ai-model gpt-4o-mini
 ```
 
 Evaluate scraped projects:
 
 ```bash
-uv run openfreela evaluate-projects
-uv run openfreela evaluate-projects --ai-provider openai
-uv run openfreela evaluate-projects --ai-provider ollama --ai-verbose
-uv run openfreela evaluate-projects --max-proposals 30
+uv run openfreela evaluate-projects --ai-model qwen3.5:latest
+uv run openfreela evaluate-projects --ai-provider openai --ai-model gpt-4o-mini
+uv run openfreela evaluate-projects --ai-provider ollama --ai-model qwen3.5:latest --ai-verbose
+uv run openfreela evaluate-projects --ai-model qwen3.5:latest --max-proposals 30
 ```
 
 For local Ollama debugging, write safe request metadata to JSONL:
 
 ```bash
-uv run openfreela evaluate-projects --ai-provider ollama --ai-log data/ai-requests.jsonl
+uv run openfreela evaluate-projects --ai-provider ollama --ai-model qwen3.5:latest --ai-log data/ai-requests.jsonl
 ```
 
 AI logs include provider, model, base URL, duration, prompt/response character counts, and Ollama timing/token metrics when available. They do not include your full CV, prompt, API token, or model response body.
@@ -204,7 +195,7 @@ data/notified-projects.json
 
 Successful evaluations are written incrementally after each project, so progress is kept if Ollama times out or one project fails to parse. Re-running the command skips project URLs already present in `data/99freelas-project-evaluations.json`.
 
-Use `--max-proposals 30` or `OPENFREELA_MAX_PROPOSALS=30` to avoid sending crowded projects to the AI. Projects with proposal counts above the threshold are skipped before any AI request; projects without a known proposal count are still evaluated.
+Use `--max-proposals 30` to avoid sending crowded projects to the AI. Projects with proposal counts above the threshold are skipped before any AI request; projects without a known proposal count are still evaluated.
 
 Telegram notifications are sent whenever `recommendation == "apply"`.
 

@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 
 from openfreela.ai_provider import (
     AI_PROVIDERS,
+    DEFAULT_AI_PROVIDER,
     AIProviderOptions,
     ai_client_from_options,
-    env_ai_provider,
 )
 from openfreela.browser_session import DEFAULT_SESSION_PATH, save_manual_login_session
 from openfreela.env_file import load_dotenv
@@ -70,7 +70,8 @@ class EvaluateOptions:
     Example:
         options = EvaluateOptions(
             Path("projects.json"), Path("cv.md"), Path("prompt.md"),
-            Path("out.json"), Path("notified.json"), 30
+            Path("out.json"), Path("notified.json"), 30, "ollama",
+            "qwen3.5:latest", False, None
         )
     """
 
@@ -81,6 +82,7 @@ class EvaluateOptions:
     notified_path: Path
     max_proposals: int | None
     ai_provider: str
+    ai_model: str
     ai_verbose: bool
     ai_log_path: Path | None
 
@@ -90,10 +92,11 @@ class TestAIOptions:
     """Options for checking the configured AI provider.
 
     Example:
-        options = TestAIOptions("ollama", True, None)
+        options = TestAIOptions("ollama", "qwen3.5:latest", True, None)
     """
 
     ai_provider: str
+    ai_model: str
     ai_verbose: bool
     ai_log_path: Path | None
 
@@ -174,7 +177,7 @@ def add_evaluate_parser(
     parser.add_argument("--prompt", default=str(DEFAULT_PROMPT_PATH))
     parser.add_argument("--output", default=str(DEFAULT_EVALUATIONS_PATH))
     parser.add_argument("--notified", default=str(DEFAULT_NOTIFIED_PROJECTS_PATH))
-    parser.add_argument("--max-proposals", type=int, default=env_max_proposals())
+    parser.add_argument("--max-proposals", type=int)
     add_ai_arguments(parser)
 
 
@@ -197,8 +200,9 @@ def add_ai_arguments(parser: argparse.ArgumentParser) -> None:
         add_ai_arguments(parser)
     """
     parser.add_argument(
-        "--ai-provider", choices=AI_PROVIDERS, default=env_ai_provider()
+        "--ai-provider", choices=AI_PROVIDERS, default=DEFAULT_AI_PROVIDER
     )
+    parser.add_argument("--ai-model", required=True)
     parser.add_argument("--ai-verbose", action="store_true")
     parser.add_argument("--ai-log")
 
@@ -261,6 +265,7 @@ def evaluate_options(namespace: argparse.Namespace) -> EvaluateOptions:
             namespace.max_proposals, "--max-proposals"
         ),
         ai_provider=str(namespace.ai_provider),
+        ai_model=str(namespace.ai_model),
         ai_verbose=bool(namespace.ai_verbose),
         ai_log_path=optional_path(namespace.ai_log),
     )
@@ -274,6 +279,7 @@ def test_ai_options(namespace: argparse.Namespace) -> TestAIOptions:
     """
     return TestAIOptions(
         ai_provider=str(namespace.ai_provider),
+        ai_model=str(namespace.ai_model),
         ai_verbose=bool(namespace.ai_verbose),
         ai_log_path=optional_path(namespace.ai_log),
     )
@@ -318,10 +324,15 @@ def run_test_ai(options: TestAIOptions) -> None:
     """Send a tiny JSON prompt to the configured AI provider.
 
     Example:
-        run_test_ai(TestAIOptions("ollama", False, None))
+        run_test_ai(TestAIOptions("ollama", "qwen3.5:latest", False, None))
     """
     judge = ai_client_from_options(
-        AIProviderOptions(options.ai_provider, options.ai_verbose, options.ai_log_path)
+        AIProviderOptions(
+            options.ai_provider,
+            options.ai_model,
+            options.ai_verbose,
+            options.ai_log_path,
+        )
     )
     content = judge.chat_json('Return exactly this JSON object: {"ok": true}')
     payload = load_json_object(content)
@@ -353,7 +364,10 @@ def ai_provider_options(options: EvaluateOptions) -> AIProviderOptions:
         ai_options = ai_provider_options(options)
     """
     return AIProviderOptions(
-        options.ai_provider, options.ai_verbose, options.ai_log_path
+        options.ai_provider,
+        options.ai_model,
+        options.ai_verbose,
+        options.ai_log_path,
     )
 
 
@@ -380,30 +394,6 @@ def required_env(name: str) -> str:
     raise RuntimeError(
         f"Missing environment variable {name}; expected a non-empty value."
     )
-
-
-def env_max_proposals() -> int | None:
-    """Return the optional proposal-count AI evaluation threshold.
-
-    Example:
-        max_proposals = env_max_proposals()
-    """
-    value = os.environ.get("OPENFREELA_MAX_PROPOSALS")
-    if value is None:
-        return None
-    return optional_non_negative_int(int(value), "OPENFREELA_MAX_PROPOSALS")
-
-
-def env_int(name: str, default: int) -> int:
-    """Return an integer environment variable or a default value.
-
-    Example:
-        timeout = env_int("OPENFREELA_OLLAMA_TIMEOUT", 300)
-    """
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return int(value)
 
 
 def optional_path(value: object) -> Path | None:

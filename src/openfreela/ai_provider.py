@@ -7,12 +7,10 @@ from typing import TYPE_CHECKING
 from openfreela.ai_request_logger import SafeAIRequestLogger
 from openfreela.ollama_client import (
     DEFAULT_OLLAMA_BASE_URL,
-    DEFAULT_OLLAMA_MODEL,
     OllamaClient,
 )
 from openfreela.openai_client import (
     DEFAULT_OPENAI_BASE_URL,
-    DEFAULT_OPENAI_MODEL,
     OpenAIClient,
 )
 
@@ -22,6 +20,7 @@ if TYPE_CHECKING:
     from openfreela.project_evaluator import ProjectJudge
 
 DEFAULT_AI_PROVIDER = "ollama"
+DEFAULT_AI_TIMEOUT_SECONDS = 300
 AI_PROVIDERS = ("ollama", "openai")
 
 
@@ -30,10 +29,11 @@ class AIProviderOptions:
     """Options used to construct an AI project judge.
 
     Example:
-        options = AIProviderOptions("ollama", True, Path("data/ai.jsonl"))
+        options = AIProviderOptions("ollama", "qwen3.5:latest")
     """
 
     provider: str
+    model: str
     verbose: bool = False
     log_path: Path | None = None
 
@@ -42,55 +42,46 @@ def ai_client_from_options(options: AIProviderOptions) -> ProjectJudge:
     """Create an AI client for the selected provider.
 
     Example:
-        judge = ai_client_from_options(AIProviderOptions("ollama"))
+        judge = ai_client_from_options(AIProviderOptions("ollama", "qwen3.5:latest"))
     """
     provider = validate_ai_provider(options.provider)
     logger = SafeAIRequestLogger(options.verbose, options.log_path)
     if provider == "ollama":
-        return ollama_client_from_env(logger, options.verbose)
-    return openai_client_from_env(logger, options.verbose)
+        return ollama_client_from_env(options.model, logger, options.verbose)
+    return openai_client_from_env(options.model, logger, options.verbose)
 
 
-def ollama_client_from_env(logger: SafeAIRequestLogger, verbose: bool) -> OllamaClient:
+def ollama_client_from_env(
+    model: str, logger: SafeAIRequestLogger, verbose: bool
+) -> OllamaClient:
     """Create an Ollama client from environment variables.
 
     Example:
-        client = ollama_client_from_env(logger, False)
+        client = ollama_client_from_env("qwen3.5:latest", logger, False)
     """
     base_url = os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
-    model = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
-    timeout = env_int("OPENFREELA_OLLAMA_TIMEOUT", 300)
     if verbose:
         print("AI provider: ollama")
         print(f"AI model: {model}")
         print(f"AI base URL: {base_url}")
-    return OllamaClient(base_url, model, timeout, logger)
+    return OllamaClient(base_url, model, DEFAULT_AI_TIMEOUT_SECONDS, logger)
 
 
-def openai_client_from_env(logger: SafeAIRequestLogger, verbose: bool) -> OpenAIClient:
+def openai_client_from_env(
+    model: str, logger: SafeAIRequestLogger, verbose: bool
+) -> OpenAIClient:
     """Create an OpenAI client from environment variables.
 
     Example:
-        client = openai_client_from_env(logger, False)
+        client = openai_client_from_env("gpt-4o-mini", logger, False)
     """
     base_url = DEFAULT_OPENAI_BASE_URL
-    model = os.environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
     api_key = required_env("OPENAI_API_KEY")
-    timeout = env_int("OPENFREELA_OPENAI_TIMEOUT", 300)
     if verbose:
         print("AI provider: openai")
         print(f"AI model: {model}")
         print(f"AI base URL: {base_url}")
-    return OpenAIClient(base_url, model, api_key, timeout, logger)
-
-
-def env_ai_provider() -> str:
-    """Return the default AI provider from the environment.
-
-    Example:
-        provider = env_ai_provider()
-    """
-    return validate_ai_provider(os.environ.get("OPENFREELA_AI_PROVIDER"))
+    return OpenAIClient(base_url, model, api_key, DEFAULT_AI_TIMEOUT_SECONDS, logger)
 
 
 def validate_ai_provider(value: str | None) -> str:
@@ -118,15 +109,3 @@ def required_env(name: str) -> str:
     raise RuntimeError(
         f"Missing environment variable {name}; expected a non-empty value."
     )
-
-
-def env_int(name: str, default: int) -> int:
-    """Return an integer environment variable or a default value.
-
-    Example:
-        timeout = env_int("OPENFREELA_OLLAMA_TIMEOUT", 300)
-    """
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return int(value)

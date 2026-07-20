@@ -19,7 +19,6 @@ from openfreela.http_client_errors import (
 )
 
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
-DEFAULT_OLLAMA_MODEL = "qwen3.5:latest"
 OLLAMA_METRIC_KEYS = (
     "total_duration",
     "load_duration",
