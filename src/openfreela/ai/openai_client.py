@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from openfreela.ai_request_logger import AIRequestLog, AIRequestLogger
-from openfreela.http_client_errors import (
+from openfreela.ai.http_errors import (
     http_error_reason,
     load_response_json,
     read_http_error_body,
     trim_error_body,
 )
+from openfreela.ai.request_logger import AIRequestLog, AIRequestLogger
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 

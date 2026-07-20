@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from openfreela.ai_provider import AIProviderOptions, ai_client_from_options
-from openfreela.ollama_client import OllamaClient
-from openfreela.openai_client import DEFAULT_OPENAI_BASE_URL, OpenAIClient
+from openfreela.ai.ollama_client import OllamaClient
+from openfreela.ai.openai_client import DEFAULT_OPENAI_BASE_URL, OpenAIClient
+from openfreela.ai.provider import AIProviderOptions, ai_client_from_options
 
 
 def test_ai_client_from_options_defaults_to_ollama(

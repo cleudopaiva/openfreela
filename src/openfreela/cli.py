@@ -7,20 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from openfreela.ai_provider import (
+from openfreela.ai.provider import (
     AI_PROVIDERS,
     DEFAULT_AI_PROVIDER,
     AIProviderOptions,
     ai_client_from_options,
 )
-from openfreela.browser_session import DEFAULT_SESSION_PATH, save_manual_login_session
-from openfreela.env_file import load_dotenv
-from openfreela.freelas99_scraper import (
-    FreelanceProject,
-    SessionExpiredError,
-    scrape_projects_pages,
-)
-from openfreela.project_evaluator import (
+from openfreela.browser.session import DEFAULT_SESSION_PATH, save_manual_login_session
+from openfreela.config.env_file import load_dotenv
+from openfreela.evaluation.evaluator import (
     DEFAULT_CV_PATH,
     DEFAULT_EVALUATIONS_PATH,
     DEFAULT_NOTIFIED_PROJECTS_PATH,
@@ -29,7 +24,12 @@ from openfreela.project_evaluator import (
     evaluate_project_file,
     load_json_object,
 )
-from openfreela.telegram_notifier import TelegramNotifier
+from openfreela.freelas99.scraper import (
+    FreelanceProject,
+    SessionExpiredError,
+    scrape_projects_pages,
+)
+from openfreela.notifications.telegram import TelegramNotifier
 
 DEFAULT_PROJECTS_OUTPUT_PATH = Path("data/99freelas-projects.json")
 

@@ -6,16 +6,16 @@ from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from openfreela.ai_request_logger import (
-    AIRequestLog,
-    AIRequestLogger,
-    safe_metric_dict,
-)
-from openfreela.http_client_errors import (
+from openfreela.ai.http_errors import (
     http_error_reason,
     load_response_json,
     read_http_error_body,
     trim_error_body,
+)
+from openfreela.ai.request_logger import (
+    AIRequestLog,
+    AIRequestLogger,
+    safe_metric_dict,
 )
 
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"

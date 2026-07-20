@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from openfreela.telegram_notifier import TelegramNotifier, validate_telegram_response
+from openfreela.notifications.telegram import (
+    TelegramNotifier,
+    validate_telegram_response,
+)
 
 
 def test_telegram_notifier_builds_send_message_url() -> None:

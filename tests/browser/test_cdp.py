@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from openfreela import cdp_browser
+from openfreela.browser import cdp as cdp_browser
 
 if TYPE_CHECKING:
     import pytest

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from openfreela.project_evaluator import (
+from openfreela.evaluation.evaluator import (
     EvaluationRunConfig,
     ProjectEvaluation,
     ProjectJudge,

@@ -108,7 +108,7 @@ def evaluate_project_file(
     Example:
         evaluations = evaluate_project_file(config, judge, notifier)
     """
-    from openfreela.project_evaluation_runner import run_project_evaluation_file
+    from openfreela.evaluation.runner import run_project_evaluation_file
 
     return run_project_evaluation_file(config, judge, notifier)
 

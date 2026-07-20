@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from openfreela.freelas99_html import parse_result_item_html
+from openfreela.freelas99.html import parse_result_item_html
 
 PROJECT_HREF = (
     "/project/alteracao-contratual-de-ltda-correcao-de-dbe-e-protocolo-na-"

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, sync_playwright
 
-from openfreela.cdp_browser import launch_cdp_browser
+from openfreela.browser.cdp import launch_cdp_browser
 
 LOGIN_URL = "https://www.99freelas.com.br/login"
 DEFAULT_SESSION_PATH = Path(".auth/99freelas.json")

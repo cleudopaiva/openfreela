@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from openfreela.project_evaluator import (
+from openfreela.evaluation.evaluator import (
     EvaluationRunConfig,
     ProjectEvaluation,
     evaluate_project_file,

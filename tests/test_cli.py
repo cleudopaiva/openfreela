@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 import pytest
 
 from openfreela import cli
-from openfreela.freelas99_scraper import FreelanceProject
-from openfreela.project_evaluator import (
+from openfreela.evaluation.evaluator import (
     DEFAULT_CV_PATH,
     DEFAULT_EVALUATIONS_PATH,
     DEFAULT_NOTIFIED_PROJECTS_PATH,
     DEFAULT_PROMPT_PATH,
     ProjectEvaluation,
 )
+from openfreela.freelas99.scraper import FreelanceProject
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

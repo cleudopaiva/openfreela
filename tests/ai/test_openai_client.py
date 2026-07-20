@@ -8,8 +8,8 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from openfreela import openai_client
-from openfreela.openai_client import (
+from openfreela.ai import openai_client
+from openfreela.ai.openai_client import (
     OpenAIClient,
     post_openai_json,
     response_message_content,

@@ -8,9 +8,13 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from openfreela import ollama_client
-from openfreela.ai_request_logger import SafeAIRequestLogger
-from openfreela.ollama_client import OllamaClient, post_json, response_message_content
+from openfreela.ai import ollama_client
+from openfreela.ai.ollama_client import (
+    OllamaClient,
+    post_json,
+    response_message_content,
+)
+from openfreela.ai.request_logger import SafeAIRequestLogger
 
 if TYPE_CHECKING:
     from pathlib import Path

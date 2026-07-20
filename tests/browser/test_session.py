@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from openfreela import browser_session
+from openfreela.browser import session as browser_session
 
 if TYPE_CHECKING:
     from pathlib import Path

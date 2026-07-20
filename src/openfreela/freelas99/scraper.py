@@ -9,8 +9,8 @@ from playwright.sync_api import Browser, BrowserContext, Locator, Page, sync_pla
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from openfreela.cdp_browser import launch_cdp_browser
-from openfreela.freelas99_html import ParsedProjectItem, parse_result_item_html
+from openfreela.browser.cdp import launch_cdp_browser
+from openfreela.freelas99.html import ParsedProjectItem, parse_result_item_html
 
 PROJECTS_URL = "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software"
 PROJECT_LINK_SELECTOR = (

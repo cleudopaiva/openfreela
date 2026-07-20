@@ -6,9 +6,9 @@ import pytest
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from openfreela import freelas99_scraper
-from openfreela.freelas99_html import ParsedProjectItem
-from openfreela.freelas99_scraper import (
+from openfreela.freelas99 import scraper as freelas99_scraper
+from openfreela.freelas99.html import ParsedProjectItem
+from openfreela.freelas99.scraper import (
     FreelanceProject,
     SessionExpiredError,
     absolute_project_url,

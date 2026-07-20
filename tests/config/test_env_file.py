@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from openfreela.env_file import load_dotenv
+from openfreela.config.env_file import load_dotenv
 
 if TYPE_CHECKING:
     from pathlib import Path

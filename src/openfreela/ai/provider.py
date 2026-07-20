@@ -4,20 +4,20 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from openfreela.ai_request_logger import SafeAIRequestLogger
-from openfreela.ollama_client import (
+from openfreela.ai.ollama_client import (
     DEFAULT_OLLAMA_BASE_URL,
     OllamaClient,
 )
-from openfreela.openai_client import (
+from openfreela.ai.openai_client import (
     DEFAULT_OPENAI_BASE_URL,
     OpenAIClient,
 )
+from openfreela.ai.request_logger import SafeAIRequestLogger
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from openfreela.project_evaluator import ProjectJudge
+    from openfreela.evaluation.evaluator import ProjectJudge
 
 DEFAULT_AI_PROVIDER = "ollama"
 DEFAULT_AI_TIMEOUT_SECONDS = 300
