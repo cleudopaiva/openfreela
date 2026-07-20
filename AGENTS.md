@@ -36,6 +36,7 @@
 ## Structure
 
 - Prefer small focused modules over god files.
+- Always try to encapsulate files commonly related in their folders.
 - Predictable paths: controller/model/view, src/lib/test, etc.
 
 ## Formatting
